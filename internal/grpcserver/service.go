@@ -206,12 +206,58 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 	return &pb.PingReply{Id: req.Id}, nil
 }
 
-// AskRule blocks until the browser user allows/denies or timeout (120s)
+// AskRule blocks until the browser user allows/denies or timeout (120s).
+// Pipeline: blocklist check → node mode check → prompt user.
 func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule, error) {
 	peerAddr := peerAddrFromCtx(ctx)
 	log.Printf("[grpc] AskRule from %s: %s -> %s:%d (%s)",
 		peerAddr, conn.ProcessPath, conn.DstHost, conn.DstPort, conn.Protocol)
 
+	// 1. Check blocklist — auto-deny blocked domains (even in silent_allow mode)
+	if conn.DstHost != "" && s.db.IsDomainBlocked(conn.DstHost) {
+		log.Printf("[grpc] AskRule: domain %s blocked by blocklist", conn.DstHost)
+		return &pb.Rule{
+			Name:     "blocklist-deny",
+			Action:   "deny",
+			Duration: "once",
+			Operator: &pb.Operator{
+				Type:    "simple",
+				Operand: "dest.host",
+				Data:    conn.DstHost,
+			},
+		}, nil
+	}
+
+	// 2. Check node mode — auto-allow or auto-deny without prompting
+	mode, _ := s.db.GetNodeMode(peerAddr)
+	switch mode {
+	case "silent_allow":
+		log.Printf("[grpc] AskRule: silent_allow for node %s", peerAddr)
+		return &pb.Rule{
+			Name:     "silent-allow",
+			Action:   "allow",
+			Duration: "once",
+			Operator: &pb.Operator{
+				Type:    "simple",
+				Operand: "dest.host",
+				Data:    conn.DstHost,
+			},
+		}, nil
+	case "silent_deny":
+		log.Printf("[grpc] AskRule: silent_deny for node %s", peerAddr)
+		return &pb.Rule{
+			Name:     "silent-deny",
+			Action:   "deny",
+			Duration: "once",
+			Operator: &pb.Operator{
+				Type:    "simple",
+				Operand: "dest.host",
+				Data:    conn.DstHost,
+			},
+		}, nil
+	}
+
+	// 3. "ask" mode — fall through to user prompt
 	rule, err := s.prompter.AskUser(peerAddr, conn)
 	if err != nil {
 		return nil, err
