@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 
+	"github.com/evilsocket/opensnitch-web/internal/blocklist"
 	"github.com/evilsocket/opensnitch-web/internal/config"
 	"github.com/evilsocket/opensnitch-web/internal/db"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
@@ -23,6 +24,7 @@ type API struct {
 	nodes    *nodemanager.Manager
 	hub      *ws.Hub
 	prompter *prompter.Prompter
+	fetcher  *blocklist.Fetcher
 	upgrader websocket.Upgrader
 }
 
@@ -33,6 +35,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		nodes:    nodes,
 		hub:      hub,
 		prompter: p,
+		fetcher:  blocklist.NewFetcher(),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -69,6 +72,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Put("/api/v1/nodes/{addr}/config", api.handleUpdateNodeConfig)
 		r.Post("/api/v1/nodes/{addr}/interception/enable", api.handleNodeAction(true, false))
 		r.Post("/api/v1/nodes/{addr}/interception/disable", api.handleNodeAction(false, false))
+		r.Put("/api/v1/nodes/{addr}/mode", api.handleSetNodeMode)
 		r.Post("/api/v1/nodes/{addr}/firewall/enable", api.handleNodeAction(true, true))
 		r.Post("/api/v1/nodes/{addr}/firewall/disable", api.handleNodeAction(false, true))
 
@@ -95,6 +99,14 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		// Alerts
 		r.Get("/api/v1/alerts", api.handleGetAlerts)
 		r.Delete("/api/v1/alerts/{id}", api.handleDeleteAlert)
+
+		// Blocklists
+		r.Get("/api/v1/blocklists", api.handleGetBlocklists)
+		r.Post("/api/v1/blocklists", api.handleCreateBlocklist)
+		r.Delete("/api/v1/blocklists/{id}", api.handleDeleteBlocklist)
+		r.Post("/api/v1/blocklists/{id}/enable", api.handleEnableBlocklist)
+		r.Post("/api/v1/blocklists/{id}/disable", api.handleDisableBlocklist)
+		r.Post("/api/v1/blocklists/{id}/sync", api.handleSyncBlocklist)
 
 		// Prompts
 		r.Get("/api/v1/prompts/pending", api.handleGetPendingPrompts)
