@@ -11,6 +11,7 @@ const modeOptions = [
 
 export default function NodesPage() {
   const [nodes, setNodes] = useState<any[]>([]);
+  const [status, setStatus] = useState<Record<string, string>>({});
 
   const fetchNodes = () => {
     api.getNodes().then(setNodes).catch(console.error);
@@ -22,6 +23,15 @@ export default function NodesPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const showStatus = (addr: string, msg: string) => {
+    setStatus((prev) => ({ ...prev, [addr]: msg }));
+    setTimeout(() => setStatus((prev) => {
+      const next = { ...prev };
+      delete next[addr];
+      return next;
+    }), 2000);
+  };
+
   const handleAction = async (addr: string, action: string) => {
     try {
       switch (action) {
@@ -30,18 +40,25 @@ export default function NodesPage() {
         case 'enable-firewall': await api.enableFirewall(addr); break;
         case 'disable-firewall': await api.disableFirewall(addr); break;
       }
+      showStatus(addr, 'Sent!');
       fetchNodes();
     } catch (e) {
       console.error('Action failed:', e);
+      showStatus(addr, 'Failed');
     }
   };
 
   const handleModeChange = async (addr: string, mode: string) => {
+    const prev = nodes.map((n) => ({ ...n }));
+    setNodes((cur) => cur.map((n) => n.addr === addr ? { ...n, mode } : n));
     try {
       await api.setNodeMode(addr, mode);
+      showStatus(addr, 'Mode updated');
       fetchNodes();
     } catch (e) {
       console.error('Mode change failed:', e);
+      setNodes(prev);
+      showStatus(addr, 'Mode change failed');
     }
   };
 
@@ -113,6 +130,15 @@ export default function NodesPage() {
                   </button>
                 ))}
               </div>
+              {status[node.addr] && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  status[node.addr].includes('fail') || status[node.addr] === 'Failed'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-success/10 text-success'
+                }`}>
+                  {status[node.addr]}
+                </span>
+              )}
             </div>
 
             {node.online && (
