@@ -29,6 +29,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		Status        string `json:"status"`
 		LastConn      string `json:"last_connection"`
 		Online        bool   `json:"online"`
+		Mode          string `json:"mode"`
 	}
 
 	result := make([]enrichedNode, len(nodes))
@@ -49,6 +50,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			Status:        status,
 			LastConn:      n.LastConn,
 			Online:        online,
+			Mode:          n.Mode,
 		}
 	}
 
@@ -83,6 +85,31 @@ func (a *API) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) {
 
 	if !a.nodes.SendNotification(addr, notif) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "node not connected"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) handleSetNodeMode(w http.ResponseWriter, r *http.Request) {
+	addr := chi.URLParam(r, "addr")
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+
+	switch req.Mode {
+	case "ask", "silent_allow", "silent_deny":
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be ask, silent_allow, or silent_deny"})
+		return
+	}
+
+	if err := a.db.SetNodeMode(addr, req.Mode); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
