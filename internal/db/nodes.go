@@ -11,6 +11,7 @@ type Node struct {
 	Version       string `json:"version"`
 	Status        string `json:"status"`
 	LastConn      string `json:"last_connection"`
+	Mode          string `json:"mode"`
 }
 
 func (d *Database) UpsertNode(n *Node) error {
@@ -18,8 +19,8 @@ func (d *Database) UpsertNode(n *Node) error {
 	defer d.mu.Unlock()
 
 	_, err := d.db.Exec(`
-		INSERT INTO nodes (addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO nodes (addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection, mode)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ask')
 		ON CONFLICT(addr) DO UPDATE SET
 			hostname=excluded.hostname,
 			daemon_version=excluded.daemon_version,
@@ -40,7 +41,7 @@ func (d *Database) GetNodes() ([]Node, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	rows, err := d.db.Query("SELECT addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection FROM nodes ORDER BY addr")
+	rows, err := d.db.Query("SELECT addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection, mode FROM nodes ORDER BY addr")
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +50,7 @@ func (d *Database) GetNodes() ([]Node, error) {
 	var nodes []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.Addr, &n.Hostname, &n.DaemonVersion, &n.DaemonUptime, &n.DaemonRules, &n.Cons, &n.ConsDropped, &n.Version, &n.Status, &n.LastConn); err != nil {
+		if err := rows.Scan(&n.Addr, &n.Hostname, &n.DaemonVersion, &n.DaemonUptime, &n.DaemonRules, &n.Cons, &n.ConsDropped, &n.Version, &n.Status, &n.LastConn, &n.Mode); err != nil {
 			return nil, err
 		}
 		nodes = append(nodes, n)
@@ -62,8 +63,8 @@ func (d *Database) GetNode(addr string) (*Node, error) {
 	defer d.mu.RUnlock()
 
 	var n Node
-	err := d.db.QueryRow("SELECT addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection FROM nodes WHERE addr = ?", addr).
-		Scan(&n.Addr, &n.Hostname, &n.DaemonVersion, &n.DaemonUptime, &n.DaemonRules, &n.Cons, &n.ConsDropped, &n.Version, &n.Status, &n.LastConn)
+	err := d.db.QueryRow("SELECT addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection, mode FROM nodes WHERE addr = ?", addr).
+		Scan(&n.Addr, &n.Hostname, &n.DaemonVersion, &n.DaemonUptime, &n.DaemonRules, &n.Cons, &n.ConsDropped, &n.Version, &n.Status, &n.LastConn, &n.Mode)
 	if err != nil {
 		return nil, err
 	}
@@ -76,4 +77,24 @@ func (d *Database) SetNodeStatus(addr, status string) error {
 
 	_, err := d.db.Exec("UPDATE nodes SET status = ? WHERE addr = ?", status, addr)
 	return err
+}
+
+func (d *Database) SetNodeMode(addr, mode string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec("UPDATE nodes SET mode = ? WHERE addr = ?", mode, addr)
+	return err
+}
+
+func (d *Database) GetNodeMode(addr string) (string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	var mode string
+	err := d.db.QueryRow("SELECT mode FROM nodes WHERE addr = ?", addr).Scan(&mode)
+	if err != nil {
+		return "ask", nil
+	}
+	return mode, nil
 }
