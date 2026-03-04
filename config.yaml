@@ -1,0 +1,18 @@
+server:
+  http_addr: ":8080"
+  grpc_addr: "0.0.0.0:50051"
+  grpc_unix: "/tmp/osui.sock"
+
+database:
+  path: "./opensnitch-web.db"
+  purge_days: 30
+
+auth:
+  default_user: "admin"
+  default_password: "opensnitch"
+  session_ttl: "24h"
+  jwt_secret: "change-me-in-production"
+
+ui:
+  default_action: "deny"
+  prompt_timeout: 120

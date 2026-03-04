@@ -1,0 +1,136 @@
+package main
+
+import (
+	"embed"
+	"flag"
+	"io/fs"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/evilsocket/opensnitch-web/internal/api"
+	"github.com/evilsocket/opensnitch-web/internal/config"
+	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
+	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
+	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/ws"
+)
+
+//go:embed all:frontend
+var embeddedFrontend embed.FS
+
+func main() {
+	configPath := flag.String("config", "config.yaml", "Path to config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize database
+	database, err := db.New(cfg.Database.Path)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer database.Close()
+
+	// Create default admin user
+	if err := api.EnsureDefaultUser(database, &cfg.Auth); err != nil {
+		log.Fatalf("Failed to ensure default user: %v", err)
+	}
+
+	// Initialize components
+	nodes := nodemanager.NewManager()
+	hub := ws.NewHub()
+	p := prompter.New(cfg.UI.PromptTimeout)
+
+	// Wire up prompter → WebSocket broadcasts
+	p.OnNewPrompt = func(prompt *prompter.PendingPrompt) {
+		conn := prompt.Connection
+		hub.BroadcastEvent(ws.EventPromptRequest, map[string]interface{}{
+			"id":         prompt.ID,
+			"node_addr":  prompt.NodeAddr,
+			"created_at": prompt.CreatedAt.Format("2006-01-02 15:04:05"),
+			"process":    conn.GetProcessPath(),
+			"dst_host":   conn.GetDstHost(),
+			"dst_ip":     conn.GetDstIp(),
+			"dst_port":   conn.GetDstPort(),
+			"protocol":   conn.GetProtocol(),
+			"src_ip":     conn.GetSrcIp(),
+			"src_port":   conn.GetSrcPort(),
+			"uid":        conn.GetUserId(),
+			"pid":        conn.GetProcessId(),
+			"args":       conn.GetProcessArgs(),
+			"cwd":        conn.GetProcessCwd(),
+			"checksums":  conn.GetProcessChecksums(),
+		})
+	}
+
+	p.OnPromptTimeout = func(promptID string) {
+		hub.BroadcastEvent(ws.EventPromptTimeout, map[string]interface{}{
+			"id": promptID,
+		})
+	}
+
+	nodes.OnNodeDisconnected = func(addr string) {
+		database.SetNodeStatus(addr, "offline")
+		hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]interface{}{
+			"addr": addr,
+		})
+	}
+
+	// Start WebSocket hub
+	go hub.Run()
+
+	// Create gRPC server
+	uiService := grpcserver.NewUIService(nodes, database, hub, p)
+	grpcSrv := grpcserver.New(uiService)
+
+	go func() {
+		if err := grpcSrv.ListenAndServe(cfg.Server.GRPCAddr); err != nil {
+			log.Fatalf("gRPC server failed: %v", err)
+		}
+	}()
+
+	// Resolve frontend FS: prefer local web/dist, fallback to embedded
+	var frontendFS fs.FS
+	if info, err := os.Stat("web/dist"); err == nil && info.IsDir() {
+		log.Println("[http] Serving frontend from local web/dist/")
+		frontendFS = os.DirFS("web/dist")
+	} else {
+		sub, err := fs.Sub(embeddedFrontend, "frontend")
+		if err != nil {
+			log.Printf("[http] No embedded frontend: %v", err)
+		} else {
+			log.Println("[http] Serving embedded frontend")
+			frontendFS = sub
+		}
+	}
+
+	// Create HTTP server
+	router := api.NewRouter(cfg, database, nodes, hub, p, frontendFS)
+
+	go func() {
+		log.Printf("[http] Listening on %s", cfg.Server.HTTPAddr)
+		if err := http.ListenAndServe(cfg.Server.HTTPAddr, router); err != nil {
+			log.Fatalf("HTTP server failed: %v", err)
+		}
+	}()
+
+	log.Println("OpenSnitch Web UI started")
+	log.Printf("  Web:   http://localhost%s", cfg.Server.HTTPAddr)
+	log.Printf("  gRPC:  %s", cfg.Server.GRPCAddr)
+	log.Println("  Login: admin / opensnitch")
+
+	// Wait for shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	log.Println("Shutting down...")
+	grpcSrv.Stop()
+}

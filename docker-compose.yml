@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  opensnitch-web:
+    build: .
+    ports:
+      - "8080:8080"   # Web UI
+      - "50051:50051" # gRPC for daemons
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
