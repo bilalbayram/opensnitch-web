@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"flag"
 	"io/fs"
@@ -123,10 +124,11 @@ func main() {
 
 	// Create HTTP server
 	router := api.NewRouter(cfg, database, nodes, hub, p, frontendFS)
+	httpSrv := &http.Server{Addr: cfg.Server.HTTPAddr, Handler: router}
 
 	go func() {
 		log.Printf("[http] Listening on %s", cfg.Server.HTTPAddr)
-		if err := http.ListenAndServe(cfg.Server.HTTPAddr, router); err != nil {
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server failed: %v", err)
 		}
 	}()
@@ -145,5 +147,6 @@ func main() {
 	<-sigChan
 
 	log.Println("Shutting down...")
+	httpSrv.Shutdown(context.Background())
 	grpcSrv.Stop()
 }
