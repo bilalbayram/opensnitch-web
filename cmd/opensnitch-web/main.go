@@ -96,6 +96,16 @@ func main() {
 		}
 	}()
 
+	// Also listen on unix socket for local daemon connections
+	if cfg.Server.GRPCUnix != "" {
+		os.Remove(cfg.Server.GRPCUnix) // clean up stale socket
+		go func() {
+			if err := grpcSrv.ListenUnix(cfg.Server.GRPCUnix); err != nil {
+				log.Printf("[grpc] Unix socket failed: %v", err)
+			}
+		}()
+	}
+
 	// Resolve frontend FS: prefer local web/dist, fallback to embedded
 	var frontendFS fs.FS
 	if info, err := os.Stat("web/dist"); err == nil && info.IsDir() {
@@ -124,6 +134,9 @@ func main() {
 	log.Println("OpenSnitch Web UI started")
 	log.Printf("  Web:   http://localhost%s", cfg.Server.HTTPAddr)
 	log.Printf("  gRPC:  %s", cfg.Server.GRPCAddr)
+	if cfg.Server.GRPCUnix != "" {
+		log.Printf("  gRPC:  unix:%s", cfg.Server.GRPCUnix)
+	}
 	log.Println("  Login: admin / opensnitch")
 
 	// Wait for shutdown
