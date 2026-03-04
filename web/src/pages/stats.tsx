@@ -45,7 +45,7 @@ export default function StatsPage() {
               <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#a1a1aa' }} width={140} />
               <Tooltip
                 contentStyle={{ background: '#111118', border: '1px solid #27272a', borderRadius: 8 }}
-                formatter={(value: number) => [formatNumber(value), 'Hits']}
+                formatter={(value?: number) => [formatNumber(value ?? 0), 'Hits']}
                 labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
               />
               <Bar dataKey="hits" fill="#3b82f6" radius={[0, 4, 4, 0]} />
