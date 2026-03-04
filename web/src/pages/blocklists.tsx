@@ -199,7 +199,9 @@ export default function BlocklistsPage() {
                 </button>
                 <button
                   onClick={() => handleToggle(bl.id, bl.enabled)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  disabled={!bl.enabled && bl.domain_count === 0}
+                  title={!bl.enabled && bl.domain_count === 0 ? 'Sync first to enable' : undefined}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     bl.enabled
                       ? 'bg-primary/10 text-primary border-primary/30'
                       : 'bg-muted border-border hover:bg-muted/80'
