@@ -12,7 +12,6 @@ import {
   Users,
   Flame,
   Bell,
-  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
@@ -30,7 +29,6 @@ const navItems = [
   { to: '/stats/users', icon: Users, label: 'Users' },
   { to: '/firewall', icon: Flame, label: 'Firewall' },
   { to: '/alerts', icon: Bell, label: 'Alerts' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export function Sidebar() {
