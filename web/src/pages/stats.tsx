@@ -25,8 +25,11 @@ export default function StatsPage() {
     return () => clearInterval(interval);
   }, [table]);
 
+  const displayValue = (what: string) =>
+    table === 'processes' ? what.split('/').pop() || what : what;
+
   const chartData = data.slice(0, 20).map((d) => ({
-    name: d.what?.length > 30 ? d.what.substring(0, 30) + '...' : d.what,
+    name: displayValue(d.what)?.length > 30 ? displayValue(d.what).substring(0, 30) + '...' : displayValue(d.what),
     hits: d.hits,
     fullName: d.what,
   }));
@@ -70,7 +73,7 @@ export default function StatsPage() {
               {data.map((d, i) => (
                 <tr key={i} className="border-b border-border/50 hover:bg-muted/50">
                   <td className="px-4 py-2 text-xs text-muted-foreground">{i + 1}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{d.what}</td>
+                  <td className="px-4 py-2 font-mono text-xs" title={d.what}>{displayValue(d.what)}</td>
                   <td className="px-4 py-2 text-xs">{formatNumber(d.hits)}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{d.node}</td>
                 </tr>
