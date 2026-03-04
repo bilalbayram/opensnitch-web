@@ -192,11 +192,52 @@ func (d *Database) migrate() error {
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL DEFAULT ''
 	);
+
+	CREATE TABLE IF NOT EXISTS blocklists (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		url TEXT NOT NULL,
+		category TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 0,
+		domain_count INTEGER NOT NULL DEFAULT 0,
+		last_synced TEXT NOT NULL DEFAULT '',
+		UNIQUE(url)
+	);
+
+	CREATE TABLE IF NOT EXISTS blocklist_domains (
+		blocklist_id INTEGER NOT NULL,
+		domain TEXT NOT NULL,
+		UNIQUE(blocklist_id, domain),
+		FOREIGN KEY (blocklist_id) REFERENCES blocklists(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_blocklist_domains_domain ON blocklist_domains(domain);
 	`
 
 	_, err := d.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("execute schema: %w", err)
+	}
+
+	// Add mode column to nodes (safe: ignores error if already exists)
+	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
+
+	// Pre-seed default blocklists (disabled by default)
+	defaultBlocklists := []struct {
+		name, url, category string
+	}{
+		{"Hagezi Light", "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/hosts/light.txt", "ads"},
+		{"Hagezi Pro", "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/hosts/pro.txt", "ads"},
+		{"Hagezi TIF", "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/hosts/tif.txt", "malware"},
+		{"OISD Small", "https://small.oisd.nl/domainswild2", "ads"},
+		{"OISD Big", "https://big.oisd.nl/domainswild2", "ads"},
+		{"Steven Black", "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts", "ads"},
+		{"Firebog Ads", "https://v.firebog.net/hosts/AdguardDNS.txt", "ads"},
+		{"Firebog Trackers", "https://v.firebog.net/hosts/Easyprivacy.txt", "telemetry"},
+		{"Firebog Malicious", "https://urlhaus.abuse.ch/downloads/hostfile/", "malware"},
+	}
+	for _, bl := range defaultBlocklists {
+		d.db.Exec("INSERT OR IGNORE INTO blocklists (name, url, category) VALUES (?, ?, ?)", bl.name, bl.url, bl.category)
 	}
 
 	log.Println("[db] Schema migration completed")
