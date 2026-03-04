@@ -3,6 +3,12 @@ import { api } from '@/lib/api';
 import { formatUptime } from '@/lib/utils';
 import { Server, Play, Pause, Shield, ShieldOff } from 'lucide-react';
 
+const modeOptions = [
+  { value: 'ask', label: 'Ask', description: 'Prompt for every unknown connection' },
+  { value: 'silent_allow', label: 'Silent Allow', description: 'Allow all connections without prompting' },
+  { value: 'silent_deny', label: 'Silent Deny', description: 'Deny all connections without prompting' },
+];
+
 export default function NodesPage() {
   const [nodes, setNodes] = useState<any[]>([]);
 
@@ -27,6 +33,15 @@ export default function NodesPage() {
       fetchNodes();
     } catch (e) {
       console.error('Action failed:', e);
+    }
+  };
+
+  const handleModeChange = async (addr: string, mode: string) => {
+    try {
+      await api.setNodeMode(addr, mode);
+      fetchNodes();
+    } catch (e) {
+      console.error('Mode change failed:', e);
     }
   };
 
@@ -72,6 +87,31 @@ export default function NodesPage() {
               <div>
                 <div className="text-xs text-muted-foreground">Rules</div>
                 <div>{node.daemon_rules || 0}</div>
+              </div>
+            </div>
+
+            {/* Mode selector */}
+            <div className="mt-4 flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">Mode:</span>
+              <div className="flex gap-1">
+                {modeOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleModeChange(node.addr, opt.value)}
+                    title={opt.description}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                      node.mode === opt.value
+                        ? opt.value === 'ask'
+                          ? 'bg-primary/10 text-primary border-primary/30'
+                          : opt.value === 'silent_allow'
+                            ? 'bg-success/10 text-success border-success/30'
+                            : 'bg-destructive/10 text-destructive border-destructive/30'
+                        : 'bg-muted border-border hover:bg-muted/80'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
 

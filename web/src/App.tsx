@@ -9,6 +9,7 @@ import NodesPage from '@/pages/nodes';
 import StatsPage from '@/pages/stats';
 import FirewallPage from '@/pages/firewall';
 import AlertsPage from '@/pages/alerts';
+import BlocklistsPage from '@/pages/blocklists';
 import SettingsPage from '@/pages/settings';
 
 const queryClient = new QueryClient({
@@ -30,6 +31,7 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
             <Route path="/rules" element={<RulesPage />} />
+            <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
             <Route path="/stats/:table" element={<StatsPage />} />
             <Route path="/firewall" element={<FirewallPage />} />

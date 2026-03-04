@@ -94,4 +94,24 @@ export const api = {
   getPendingPrompts: () => request<any[]>('/prompts/pending'),
   replyPrompt: (id: string, reply: any) =>
     request(`/prompts/${id}/reply`, { method: 'POST', body: JSON.stringify(reply) }),
+
+  // Node mode
+  setNodeMode: (addr: string, mode: string) =>
+    request(`/nodes/${encodeURIComponent(addr)}/mode`, {
+      method: 'PUT',
+      body: JSON.stringify({ mode }),
+    }),
+
+  // Blocklists
+  getBlocklists: () => request<any[]>('/blocklists'),
+  createBlocklist: (name: string, url: string, category: string) =>
+    request('/blocklists', { method: 'POST', body: JSON.stringify({ name, url, category }) }),
+  deleteBlocklist: (id: number) =>
+    request(`/blocklists/${id}`, { method: 'DELETE' }),
+  enableBlocklist: (id: number) =>
+    request(`/blocklists/${id}/enable`, { method: 'POST' }),
+  disableBlocklist: (id: number) =>
+    request(`/blocklists/${id}/disable`, { method: 'POST' }),
+  syncBlocklist: (id: number) =>
+    request<{ status: string; domain_count: number }>(`/blocklists/${id}/sync`, { method: 'POST' }),
 };
