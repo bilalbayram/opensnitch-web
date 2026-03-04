@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { formatUptime } from '@/lib/utils';
 import { Server, Play, Pause, Shield, ShieldOff } from 'lucide-react';
@@ -12,9 +12,12 @@ const modeOptions = [
 export default function NodesPage() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [status, setStatus] = useState<Record<string, string>>({});
+  const pendingRef = useRef(0);
 
-  const fetchNodes = () => {
-    api.getNodes().then(setNodes).catch(console.error);
+  const fetchNodes = (force?: boolean) => {
+    api.getNodes().then((data) => {
+      if (force || pendingRef.current === 0) setNodes(data);
+    }).catch(console.error);
   };
 
   useEffect(() => {
@@ -33,6 +36,7 @@ export default function NodesPage() {
   };
 
   const handleAction = async (addr: string, action: string) => {
+    pendingRef.current++;
     try {
       switch (action) {
         case 'enable-interception': await api.enableInterception(addr); break;
@@ -41,24 +45,29 @@ export default function NodesPage() {
         case 'disable-firewall': await api.disableFirewall(addr); break;
       }
       showStatus(addr, 'Sent!');
-      fetchNodes();
     } catch (e) {
       console.error('Action failed:', e);
       showStatus(addr, 'Failed');
+    } finally {
+      pendingRef.current--;
+      fetchNodes(true);
     }
   };
 
   const handleModeChange = async (addr: string, mode: string) => {
     const prev = nodes.map((n) => ({ ...n }));
     setNodes((cur) => cur.map((n) => n.addr === addr ? { ...n, mode } : n));
+    pendingRef.current++;
     try {
       await api.setNodeMode(addr, mode);
       showStatus(addr, 'Mode updated');
-      fetchNodes();
     } catch (e) {
       console.error('Mode change failed:', e);
       setNodes(prev);
       showStatus(addr, 'Mode change failed');
+    } finally {
+      pendingRef.current--;
+      fetchNodes(true);
     }
   };
 
