@@ -10,7 +10,7 @@ import StatsPage from '@/pages/stats';
 import FirewallPage from '@/pages/firewall';
 import AlertsPage from '@/pages/alerts';
 import BlocklistsPage from '@/pages/blocklists';
-import SettingsPage from '@/pages/settings';
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,7 +36,7 @@ function App() {
             <Route path="/stats/:table" element={<StatsPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+
           </Route>
         </Routes>
       </BrowserRouter>
