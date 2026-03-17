@@ -79,6 +79,8 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		// Rules
 		r.Get("/api/v1/rules", api.handleGetRules)
 		r.Post("/api/v1/rules", api.handleCreateRule)
+		r.Post("/api/v1/rules/generate/preview", api.handleGenerateRulesPreview)
+		r.Post("/api/v1/rules/generate/apply", api.handleGenerateRulesApply)
 		r.Put("/api/v1/rules/{name}", api.handleUpdateRule)
 		r.Delete("/api/v1/rules/{name}", api.handleDeleteRule)
 		r.Post("/api/v1/rules/{name}/enable", api.handleToggleRule(true))
