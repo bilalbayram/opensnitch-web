@@ -7,3 +7,5 @@ web/dist/
 *.db-shm
 data/
 config.yaml
+web/playwright-report/
+web/test-results/
