@@ -11,6 +11,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/db"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 	pb "github.com/evilsocket/opensnitch-web/proto"
 	"google.golang.org/grpc/peer"
@@ -44,6 +45,16 @@ func peerAddrFromCtx(ctx context.Context) string {
 	return p.Addr.String()
 }
 
+func normalizeEventTime(value string, unixnano int64) string {
+	if unixnano > 0 {
+		return ruleutil.FormatStoredTime(time.Unix(0, unixnano))
+	}
+	if ts, err := ruleutil.ParseStoredTime(value); err == nil {
+		return ruleutil.FormatStoredTime(ts)
+	}
+	return value
+}
+
 // Subscribe is called when a daemon first connects.
 func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb.ClientConfig, error) {
 	peerAddr := peerAddrFromCtx(ctx)
@@ -63,22 +74,12 @@ func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb
 
 	// Store rules from daemon
 	for _, r := range config.GetRules() {
-		s.db.UpsertRule(&db.DBRule{
-			Time:              time.Now().Format("2006-01-02 15:04:05"),
-			Node:              peerAddr,
-			Name:              r.Name,
-			Enabled:           r.Enabled,
-			Precedence:        r.Precedence,
-			Action:            r.Action,
-			Duration:          r.Duration,
-			OperatorType:      r.GetOperator().GetType(),
-			OperatorSensitive: r.GetOperator().GetSensitive(),
-			OperatorOperand:   r.GetOperator().GetOperand(),
-			OperatorData:      r.GetOperator().GetData(),
-			Description:       r.Description,
-			Nolog:             r.Nolog,
-			Created:           time.Unix(r.Created, 0).Format("2006-01-02 15:04:05"),
-		})
+		dbRule, err := ruleutil.ProtoToDBRule(peerAddr, time.Now(), r)
+		if err != nil {
+			log.Printf("[grpc] Failed to convert rule %q from %s: %v", r.GetName(), peerAddr, err)
+			continue
+		}
+		s.db.UpsertRule(dbRule)
 	}
 
 	s.hub.BroadcastEvent(ws.EventNodeConnected, map[string]interface{}{
@@ -129,7 +130,7 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 			}
 
 			s.db.InsertConnection(&db.Connection{
-				Time:        evt.Time,
+				Time:        normalizeEventTime(evt.Time, evt.Unixnano),
 				Node:        peerAddr,
 				Action:      action,
 				Protocol:    conn.Protocol,

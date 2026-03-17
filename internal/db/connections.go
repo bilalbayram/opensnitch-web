@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 type Connection struct {
@@ -36,6 +37,18 @@ type ConnectionFilter struct {
 	Search   string
 	Limit    int
 	Offset   int
+}
+
+type Flow struct {
+	Node                string `json:"node"`
+	Process             string `json:"process"`
+	Protocol            string `json:"protocol"`
+	DstPort             int    `json:"dst_port"`
+	Destination         string `json:"destination"`
+	DestinationOperand  string `json:"destination_operand"`
+	Hits                int    `json:"hits"`
+	FirstSeen           string `json:"first_seen"`
+	LastSeen            string `json:"last_seen"`
 }
 
 func (d *Database) InsertConnection(c *Connection) error {
@@ -143,4 +156,88 @@ func (d *Database) PurgeConnections() error {
 
 	_, err := d.db.Exec("DELETE FROM connections")
 	return err
+}
+
+func (d *Database) GetUniqueFlows(node string, since, until time.Time, excludeProcesses []string) ([]Flow, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	where := []string{
+		"node = ?",
+		"action = 'allow'",
+		"rule = 'silent-allow'",
+		"time >= ?",
+		"time <= ?",
+		"process != ''",
+		"protocol != ''",
+		"dst_port > 0",
+		"(TRIM(dst_host) != '' OR TRIM(dst_ip) != '')",
+	}
+	args := []interface{}{
+		node,
+		since.In(time.Local).Format("2006-01-02 15:04:05"),
+		until.In(time.Local).Format("2006-01-02 15:04:05"),
+	}
+
+	trimmedExclusions := make([]string, 0, len(excludeProcesses))
+	for _, process := range excludeProcesses {
+		process = strings.TrimSpace(process)
+		if process == "" {
+			continue
+		}
+		trimmedExclusions = append(trimmedExclusions, process)
+	}
+
+	if len(trimmedExclusions) > 0 {
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(trimmedExclusions)), ",")
+		where = append(where, "process NOT IN ("+placeholders+")")
+		for _, process := range trimmedExclusions {
+			args = append(args, process)
+		}
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			process,
+			protocol,
+			dst_port,
+			CASE WHEN TRIM(dst_host) != '' THEN dst_host ELSE dst_ip END AS destination,
+			CASE WHEN TRIM(dst_host) != '' THEN 'dest.host' ELSE 'dest.ip' END AS destination_operand,
+			COUNT(*) AS hits,
+			MIN(time) AS first_seen,
+			MAX(time) AS last_seen
+		FROM connections
+		WHERE %s
+		GROUP BY process, protocol, dst_port, destination_operand, destination
+		ORDER BY hits DESC, process, destination, dst_port, protocol
+	`, strings.Join(where, " AND "))
+
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	flows := []Flow{}
+	for rows.Next() {
+		var flow Flow
+		var hits int64
+		if err := rows.Scan(
+			&flow.Process,
+			&flow.Protocol,
+			&flow.DstPort,
+			&flow.Destination,
+			&flow.DestinationOperand,
+			&hits,
+			&flow.FirstSeen,
+			&flow.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		flow.Node = node
+		flow.Hits = int(hits)
+		flows = append(flows, flow)
+	}
+
+	return flows, rows.Err()
 }

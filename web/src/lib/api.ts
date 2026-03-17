@@ -62,6 +62,16 @@ export const api = {
     request('/rules', { method: 'POST', body: JSON.stringify(rule) }),
   updateRule: (name: string, rule: any) =>
     request(`/rules/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(rule) }),
+  previewGeneratedRules: (payload: Record<string, unknown>) =>
+    request<{ data: Array<Record<string, unknown>>; skipped_existing: number; skipped_excluded: number }>('/rules/generate/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  applyGeneratedRules: (payload: Record<string, unknown>) =>
+    request<{ status: string; mode: string; data: Array<Record<string, unknown>>; count: number }>('/rules/generate/apply', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   deleteRule: (name: string, node?: string) =>
     request(`/rules/${encodeURIComponent(name)}${node ? `?node=${encodeURIComponent(node)}` : ''}`, { method: 'DELETE' }),
   enableRule: (name: string, node?: string) =>

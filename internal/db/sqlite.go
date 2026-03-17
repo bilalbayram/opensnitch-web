@@ -120,6 +120,7 @@ func (d *Database) migrate() error {
 		operator_sensitive INTEGER NOT NULL DEFAULT 0,
 		operator_operand TEXT NOT NULL DEFAULT '',
 		operator_data TEXT NOT NULL DEFAULT '',
+		operator_json TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		nolog INTEGER NOT NULL DEFAULT 0,
 		created TEXT NOT NULL DEFAULT '',
@@ -221,6 +222,7 @@ func (d *Database) migrate() error {
 
 	// Add mode column to nodes (safe: ignores error if already exists)
 	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
 
 	// Pre-seed default blocklists (disabled by default)
 	defaultBlocklists := []struct {
