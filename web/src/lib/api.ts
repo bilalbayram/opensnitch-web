@@ -160,4 +160,42 @@ export const api = {
     request(`/blocklists/${id}/disable`, { method: 'POST' }),
   syncBlocklist: (id: number) =>
     request<{ status: string; domain_count: number }>(`/blocklists/${id}/sync`, { method: 'POST' }),
+
+  // Version & Updates
+  getVersion: () =>
+    request<{
+      current_version: string;
+      build_time?: string;
+      latest_version?: string;
+      update_available: boolean;
+      last_check?: string;
+      checking: boolean;
+      downloading: boolean;
+      error?: string;
+      release?: {
+        tag_name: string;
+        published_at: string;
+        html_url: string;
+        body: string;
+      };
+    }>('/version'),
+  checkUpdate: () =>
+    request<{
+      current_version: string;
+      build_time?: string;
+      latest_version?: string;
+      update_available: boolean;
+      last_check?: string;
+      checking: boolean;
+      downloading: boolean;
+      error?: string;
+      release?: {
+        tag_name: string;
+        published_at: string;
+        html_url: string;
+        body: string;
+      };
+    }>('/update/check', { method: 'POST' }),
+  applyUpdate: () =>
+    request<{ status: string }>('/update/apply', { method: 'POST' }),
 };

@@ -3,7 +3,7 @@ import { wsClient } from '@/lib/ws';
 import { useAppStore } from '@/stores/app-store';
 
 export function useWebSocket() {
-  const { token, setWSConnected, updateStats, addPrompt, removePrompt, addConnection, addNodeOnline, removeNodeOnline } = useAppStore();
+  const { token, setWSConnected, updateStats, addPrompt, removePrompt, addConnection, addNodeOnline, removeNodeOnline, setUpdateAvailable } = useAppStore();
 
   useEffect(() => {
     if (!token) return;
@@ -17,6 +17,7 @@ export function useWebSocket() {
       wsClient.on('prompt_timeout', (e) => removePrompt(e.payload.id)),
       wsClient.on('node_connected', (e) => addNodeOnline(e.payload.addr)),
       wsClient.on('node_disconnected', (e) => removeNodeOnline(e.payload.addr)),
+      wsClient.on('update_available', (e) => setUpdateAvailable(true, e.payload.latest_version)),
     ];
 
     const checkInterval = setInterval(() => {
