@@ -25,7 +25,7 @@ const navItems = [
   { to: "/blocklists", icon: ShieldBan, label: "Blocklists" },
   { to: "/nodes", icon: Server, label: "Nodes" },
   {
-    to: "/stats/hosts",
+    to: "/stats/timeline",
     icon: BarChart3,
     label: "Stats",
     matchPrefix: "/stats",

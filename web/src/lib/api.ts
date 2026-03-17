@@ -244,6 +244,43 @@ export const api = {
     request<Array<Record<string, unknown>>>(
       `/stats/${table}${limit ? `?limit=${limit}` : ""}`,
     ),
+  getTimeSeries: (hours?: number, bucket?: number, node?: string) => {
+    const params = new URLSearchParams();
+    if (hours) params.set("hours", String(hours));
+    if (bucket) params.set("bucket", String(bucket));
+    if (node) params.set("node", node);
+    const qs = params.toString();
+    return request<
+      Array<{ bucket: string; allow: number; deny: number; total: number }>
+    >(`/stats/timeseries${qs ? "?" + qs : ""}`);
+  },
+  getTopBlocked: (dimension?: string, limit?: number, hours?: number) => {
+    const params = new URLSearchParams();
+    if (dimension) params.set("dimension", dimension);
+    if (limit) params.set("limit", String(limit));
+    if (hours) params.set("hours", String(hours));
+    const qs = params.toString();
+    return request<Array<{ what: string; hits: number; node: string }>>(
+      `/stats/top-blocked${qs ? "?" + qs : ""}`,
+    );
+  },
+  getGeoSummary: (hours?: number, limit?: number) => {
+    const params = new URLSearchParams();
+    if (hours) params.set("hours", String(hours));
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return request<
+      Array<{
+        ip: string;
+        country: string;
+        country_code: string;
+        city: string;
+        lat: number;
+        lon: number;
+        hits: number;
+      }>
+    >(`/stats/geo${qs ? "?" + qs : ""}`);
+  },
 
   // Firewall
   getFirewall: () => request<any[]>("/firewall"),

@@ -25,7 +25,7 @@ const primaryTabs = [
 ];
 
 const moreTabs = [
-  { to: '/stats/hosts', icon: BarChart3, label: 'Statistics' },
+  { to: '/stats/timeline', icon: BarChart3, label: 'Statistics' },
   { to: '/firewall', icon: Flame, label: 'Firewall' },
   { to: '/blocklists', icon: ShieldBan, label: 'Blocklists' },
   { to: '/settings', icon: Settings, label: 'Settings' },

@@ -14,6 +14,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/api"
 	"github.com/evilsocket/opensnitch-web/internal/config"
 	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/evilsocket/opensnitch-web/internal/geoip"
 	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
@@ -141,8 +142,11 @@ func main() {
 		}
 	}
 
+	// Create GeoIP resolver
+	geo := geoip.NewResolver(database, cfg.GeoIP.Enabled)
+
 	// Create HTTP server
-	router := api.NewRouter(cfg, database, nodes, hub, p, templateSync, frontendFS, upd)
+	router := api.NewRouter(cfg, database, nodes, hub, p, templateSync, frontendFS, upd, geo)
 	httpSrv := &http.Server{Addr: cfg.Server.HTTPAddr, Handler: router}
 
 	go func() {
@@ -165,6 +169,7 @@ func main() {
 
 	log.Println("Shutting down...")
 	updCancel()
+	geo.Stop()
 	httpSrv.Shutdown(context.Background())
 	grpcSrv.Stop()
 }

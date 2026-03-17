@@ -13,6 +13,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/blocklist"
 	"github.com/evilsocket/opensnitch-web/internal/config"
 	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/evilsocket/opensnitch-web/internal/geoip"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
 	"github.com/evilsocket/opensnitch-web/internal/templatesync"
@@ -29,10 +30,11 @@ type API struct {
 	templateSync *templatesync.Service
 	fetcher      *blocklist.Fetcher
 	updater      *updater.Updater
+	geoResolver  *geoip.Resolver
 	upgrader     websocket.Upgrader
 }
 
-func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service, frontendFS fs.FS, upd *updater.Updater) http.Handler {
+func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service, frontendFS fs.FS, upd *updater.Updater, geo *geoip.Resolver) http.Handler {
 	api := &API{
 		cfg:          cfg,
 		db:           database,
@@ -42,6 +44,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		templateSync: templateSync,
 		fetcher:      blocklist.NewFetcher(),
 		updater:      upd,
+		geoResolver:  geo,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -125,6 +128,9 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 
 		// Stats
 		r.Get("/api/v1/stats", api.handleGetGeneralStats)
+		r.Get("/api/v1/stats/timeseries", api.handleGetTimeSeries)
+		r.Get("/api/v1/stats/top-blocked", api.handleGetTopBlocked)
+		r.Get("/api/v1/stats/geo", api.handleGeoSummary)
 		r.Get("/api/v1/stats/{table}", api.handleGetStats)
 
 		// Firewall
