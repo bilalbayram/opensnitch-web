@@ -1,7 +1,12 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"log"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -67,9 +72,17 @@ func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return cfg, nil
+			if err := bootstrapFromExample(path); err == nil {
+				data, err = os.ReadFile(path)
+				if err != nil {
+					return cfg, nil
+				}
+			} else {
+				return cfg, nil
+			}
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
@@ -77,4 +90,41 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func bootstrapFromExample(path string) error {
+	examplePath := path + ".example"
+	data, err := os.ReadFile(examplePath)
+	if err != nil {
+		return err
+	}
+
+	jwtSecret, err := randomHex(32)
+	if err != nil {
+		return fmt.Errorf("generate jwt secret: %w", err)
+	}
+	password, err := randomHex(16)
+	if err != nil {
+		return fmt.Errorf("generate password: %w", err)
+	}
+
+	content := string(data)
+	content = strings.Replace(content, `jwt_secret: "change-me-in-production"`, `jwt_secret: "`+jwtSecret+`"`, 1)
+	content = strings.Replace(content, `default_password: "opensnitch"`, `default_password: "`+password+`"`, 1)
+
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		return err
+	}
+
+	log.Printf("[config] Generated %s from %s (secrets auto-generated)", path, examplePath)
+	log.Printf("[config] Admin password: %s", password)
+	return nil
+}
+
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

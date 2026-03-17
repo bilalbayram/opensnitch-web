@@ -21,6 +21,6 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend /opensnitch-web .
-COPY config.yaml .
+COPY config.yaml.example .
 EXPOSE 8080 50051
 CMD ["./opensnitch-web", "-config", "config.yaml"]

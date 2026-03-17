@@ -87,7 +87,9 @@ Open [http://localhost:8080](http://localhost:8080) and log in with the default 
 
 ## Configuration
 
-All settings are in `config.yaml`:
+On first run, if `config.yaml` doesn't exist, it is automatically created from `config.yaml.example` with randomly generated secrets (JWT secret and admin password). The generated admin password is printed to the log.
+
+`config.yaml` is gitignored to prevent secrets from being tracked or overwritten by `git pull`.
 
 ```yaml
 server:
@@ -101,9 +103,9 @@ database:
 
 auth:
   default_user: "admin"                # Default admin username
-  default_password: "opensnitch"       # Default admin password
+  default_password: "opensnitch"       # Default admin password (auto-generated on first run)
   session_ttl: "24h"                   # JWT session duration
-  jwt_secret: "change-me-in-production" # JWT signing secret
+  jwt_secret: "change-me-in-production" # JWT signing secret (auto-generated on first run)
 
 ui:
   default_action: "deny"       # Default action for unhandled prompts
@@ -174,7 +176,7 @@ opensnitch-web/
 │       ├── pages/          # Route pages
 │       ├── stores/         # Zustand state stores
 │       └── types/          # TypeScript type definitions
-├── config.yaml             # Default configuration
+├── config.yaml.example     # Example configuration (copied to config.yaml on first run)
 ├── Dockerfile              # Multi-stage Docker build
 └── Makefile                # Build targets
 ```
@@ -201,7 +203,7 @@ All API routes are under `/api/v1/`. Protected routes require a JWT `Authorizati
 |---|---|
 | `admin` | `opensnitch` |
 
-> **Warning**: Change the default password and `jwt_secret` in `config.yaml` before deploying to production.
+> **Note**: On first run, a unique admin password and JWT secret are auto-generated in `config.yaml`. Check the server log for the generated password.
 
 ## License
 
