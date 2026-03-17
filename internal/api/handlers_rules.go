@@ -183,7 +183,7 @@ func (a *API) handleUpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.db.UpsertRule(dbRule); err != nil {
+	if err := a.db.UpdateRuleAndResetSeenFlows(dbRule); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -385,6 +385,11 @@ func (a *API) handleToggleRule(enable bool) http.HandlerFunc {
 			a.nodes.SendNotification(node, notif)
 		} else {
 			a.nodes.BroadcastNotification(notif)
+		}
+
+		if err := a.db.SetRuleEnabled(node, name, enable); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

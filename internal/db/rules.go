@@ -53,6 +53,28 @@ func (d *Database) UpsertRule(r *DBRule) error {
 	return upsertRule(d.db, r)
 }
 
+func (d *Database) UpdateRuleAndResetSeenFlows(r *DBRule) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	if err := upsertRule(tx, r); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	if err := deleteSeenFlowsBySourceRuleExec(tx, r.Node, r.Name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (d *Database) ApplyGeneratedRules(node string, rules []*DBRule, mode string) (string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -194,6 +216,45 @@ func (d *Database) DeleteRule(node, name string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	_, err := d.db.Exec("DELETE FROM rules WHERE node = ? AND name = ?", node, name)
-	return err
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec("DELETE FROM rules WHERE node = ? AND name = ?", node, name)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	if err := deleteSeenFlowsBySourceRuleExec(tx, node, name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (d *Database) SetRuleEnabled(node, name string, enabled bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec("UPDATE rules SET enabled = ? WHERE node = ? AND name = ?", enabled, node, name); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	if !enabled {
+		if err := deleteSeenFlowsBySourceRuleExec(tx, node, name); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

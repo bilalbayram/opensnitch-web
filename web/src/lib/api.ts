@@ -1,5 +1,19 @@
 const API_BASE = '/api/v1';
 
+export interface SeenFlowRecord {
+  id: number;
+  node: string;
+  process: string;
+  protocol: string;
+  dst_port: number;
+  destination_operand: string;
+  destination: string;
+  action: string;
+  first_seen: string;
+  last_seen: string;
+  count: number;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('token');
   const headers: Record<string, string> = {
@@ -85,6 +99,10 @@ export const api = {
     return request<{ data: any[]; total: number }>(`/connections${qs}`);
   },
   purgeConnections: () => request('/connections', { method: 'DELETE' }),
+  getSeenFlows: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<{ data: SeenFlowRecord[]; total: number }>(`/seen-flows${qs}`);
+  },
 
   // Stats
   getStats: () => request<any>('/stats'),

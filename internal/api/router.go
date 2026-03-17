@@ -95,6 +95,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		// Connections
 		r.Get("/api/v1/connections", api.handleGetConnections)
 		r.Delete("/api/v1/connections", api.handlePurgeConnections)
+		r.Get("/api/v1/seen-flows", api.handleGetSeenFlows)
 
 		// Stats
 		r.Get("/api/v1/stats", api.handleGetGeneralStats)

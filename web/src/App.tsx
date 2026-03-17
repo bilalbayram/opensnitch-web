@@ -4,6 +4,7 @@ import { MainLayout } from '@/components/layout/main-layout';
 import LoginPage from '@/pages/login';
 import DashboardPage from '@/pages/dashboard';
 import ConnectionsPage from '@/pages/connections';
+import SeenFlowsPage from '@/pages/seen-flows';
 import RulesPage from '@/pages/rules';
 import NodesPage from '@/pages/nodes';
 import StatsPage from '@/pages/stats';
@@ -30,6 +31,7 @@ function App() {
           <Route element={<MainLayout />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
+            <Route path="/seen-flows" element={<SeenFlowsPage />} />
             <Route path="/rules" element={<RulesPage />} />
             <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
