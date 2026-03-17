@@ -208,7 +208,7 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 }
 
 // AskRule blocks until the browser user allows/denies or timeout (120s).
-// Pipeline: blocklist check → node mode check → prompt user.
+// Pipeline: blocklist check → trust list check → node mode check → prompt user.
 func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule, error) {
 	peerAddr := peerAddrFromCtx(ctx)
 	log.Printf("[grpc] AskRule from %s: %s -> %s:%d (%s)",
@@ -229,7 +229,31 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		}, nil
 	}
 
-	// 2. Check node mode — auto-allow or auto-deny without prompting
+	// 2. Check process trust list
+	trustLevel := s.db.GetProcessTrustLevel(peerAddr, conn.ProcessPath)
+	switch trustLevel {
+	case "trusted":
+		log.Printf("[grpc] AskRule: process %s trusted, auto-allow", conn.ProcessPath)
+		return &pb.Rule{
+			Name:     "trust-allow",
+			Action:   "allow",
+			Duration: "once",
+			Operator: &pb.Operator{
+				Type:    "simple",
+				Operand: "process.path",
+				Data:    conn.ProcessPath,
+			},
+		}, nil
+	case "untrusted":
+		log.Printf("[grpc] AskRule: process %s untrusted, forcing prompt", conn.ProcessPath)
+		rule, err := s.prompter.AskUser(peerAddr, conn)
+		if err != nil {
+			return nil, err
+		}
+		return rule, nil
+	}
+
+	// 3. Check node mode — auto-allow or auto-deny without prompting
 	mode, _ := s.db.GetNodeMode(peerAddr)
 	switch mode {
 	case "silent_allow":
@@ -258,7 +282,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		}, nil
 	}
 
-	// 3. "ask" mode — fall through to user prompt
+	// 4. "ask" mode — fall through to user prompt
 	rule, err := s.prompter.AskUser(peerAddr, conn)
 	if err != nil {
 		return nil, err

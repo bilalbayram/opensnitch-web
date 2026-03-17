@@ -114,6 +114,22 @@ export const api = {
       body: JSON.stringify({ mode }),
     }),
 
+  // Process Trust
+  getProcessTrust: (addr: string) =>
+    request<any[]>(`/nodes/${encodeURIComponent(addr)}/trust`),
+  addProcessTrust: (addr: string, processPath: string, trustLevel: string) =>
+    request<any>(`/nodes/${encodeURIComponent(addr)}/trust`, {
+      method: 'POST',
+      body: JSON.stringify({ process_path: processPath, trust_level: trustLevel }),
+    }),
+  updateProcessTrust: (addr: string, id: number, trustLevel: string) =>
+    request(`/nodes/${encodeURIComponent(addr)}/trust/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ trust_level: trustLevel }),
+    }),
+  deleteProcessTrust: (addr: string, id: number) =>
+    request(`/nodes/${encodeURIComponent(addr)}/trust/${id}`, { method: 'DELETE' }),
+
   // Blocklists
   getBlocklists: () => request<any[]>('/blocklists'),
   createBlocklist: (name: string, url: string, category: string) =>

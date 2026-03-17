@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { formatUptime } from '@/lib/utils';
-import { Server, Play, Pause, Shield, ShieldOff } from 'lucide-react';
+import { Server, Play, Pause, Shield, ShieldOff, ShieldCheck, ChevronDown, ChevronUp, Trash2, Plus } from 'lucide-react';
 
 const modeOptions = [
   { value: 'ask', label: 'Ask', description: 'Prompt for every unknown connection' },
@@ -13,6 +13,10 @@ export default function NodesPage() {
   const [nodes, setNodes] = useState<any[]>([]);
   const [status, setStatus] = useState<Record<string, string>>({});
   const pendingRef = useRef(0);
+  const [trustExpanded, setTrustExpanded] = useState<Record<string, boolean>>({});
+  const [trustData, setTrustData] = useState<Record<string, any[]>>({});
+  const [newTrustPath, setNewTrustPath] = useState<Record<string, string>>({});
+  const [newTrustLevel, setNewTrustLevel] = useState<Record<string, string>>({});
 
   const fetchNodes = (force?: boolean) => {
     api.getNodes().then((data) => {
@@ -69,6 +73,59 @@ export default function NodesPage() {
       pendingRef.current--;
       fetchNodes(true);
     }
+  };
+
+  const fetchTrust = (addr: string) => {
+    api.getProcessTrust(addr).then((data) => {
+      setTrustData((prev) => ({ ...prev, [addr]: data }));
+    }).catch(console.error);
+  };
+
+  const toggleTrustExpand = (addr: string) => {
+    const expanding = !trustExpanded[addr];
+    setTrustExpanded((prev) => ({ ...prev, [addr]: expanding }));
+    if (expanding && !trustData[addr]) {
+      fetchTrust(addr);
+    }
+  };
+
+  const handleAddTrust = async (addr: string) => {
+    const path = newTrustPath[addr]?.trim();
+    const level = newTrustLevel[addr] || 'trusted';
+    if (!path) return;
+    try {
+      await api.addProcessTrust(addr, path, level);
+      setNewTrustPath((prev) => ({ ...prev, [addr]: '' }));
+      setNewTrustLevel((prev) => ({ ...prev, [addr]: '' }));
+      fetchTrust(addr);
+    } catch (e: any) {
+      showStatus(addr, e.message || 'Failed to add');
+    }
+  };
+
+  const handleUpdateTrust = async (addr: string, id: number, level: string) => {
+    try {
+      await api.updateProcessTrust(addr, id, level);
+      fetchTrust(addr);
+    } catch (e: any) {
+      showStatus(addr, e.message || 'Failed to update');
+    }
+  };
+
+  const handleDeleteTrust = async (addr: string, id: number) => {
+    try {
+      await api.deleteProcessTrust(addr, id);
+      fetchTrust(addr);
+    } catch (e: any) {
+      showStatus(addr, e.message || 'Failed to delete');
+    }
+  };
+
+  const trustLevelOptions = ['trusted', 'untrusted', 'default'] as const;
+  const trustLevelColors: Record<string, string> = {
+    trusted: 'bg-success/10 text-success border-success/30',
+    untrusted: 'bg-destructive/10 text-destructive border-destructive/30',
+    default: 'bg-primary/10 text-primary border-primary/30',
   };
 
   return (
@@ -178,6 +235,106 @@ export default function NodesPage() {
                 </button>
               </div>
             )}
+
+            {/* Trust List */}
+            <div className="mt-4 border-t border-border pt-4">
+              <button
+                onClick={() => toggleTrustExpand(node.addr)}
+                className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors w-full"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Trust List ({trustData[node.addr]?.length || 0} entries)
+                {trustExpanded[node.addr] ? <ChevronUp className="h-4 w-4 ml-auto" /> : <ChevronDown className="h-4 w-4 ml-auto" />}
+              </button>
+
+              {trustExpanded[node.addr] && (
+                <div className="mt-3 space-y-2">
+                  {/* Add new entry */}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder="/usr/bin/..."
+                      value={newTrustPath[node.addr] || ''}
+                      onChange={(e) => setNewTrustPath((prev) => ({ ...prev, [node.addr]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddTrust(node.addr)}
+                      className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                    />
+                    <select
+                      value={newTrustLevel[node.addr] || 'trusted'}
+                      onChange={(e) => setNewTrustLevel((prev) => ({ ...prev, [node.addr]: e.target.value }))}
+                      className="text-xs px-2 py-1.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                    >
+                      {trustLevelOptions.map((lvl) => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => handleAddTrust(node.addr)}
+                      className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20"
+                    >
+                      <Plus className="h-3 w-3" /> Add
+                    </button>
+                  </div>
+
+                  {/* Trust entries table */}
+                  {trustData[node.addr]?.length > 0 && (
+                    <div className="rounded-lg border border-border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left px-3 py-2 font-medium">Process Path</th>
+                            <th className="text-left px-3 py-2 font-medium w-20">Scope</th>
+                            <th className="text-left px-3 py-2 font-medium w-52">Trust Level</th>
+                            <th className="w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {trustData[node.addr].map((entry: any) => (
+                            <tr key={entry.id} className="border-t border-border">
+                              <td className="px-3 py-2 font-mono">{entry.process_path}</td>
+                              <td className="px-3 py-2">
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  entry.node === '*'
+                                    ? 'bg-muted text-muted-foreground'
+                                    : 'bg-primary/10 text-primary'
+                                }`}>
+                                  {entry.node === '*' ? 'Global' : 'This node'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex gap-1">
+                                  {trustLevelOptions.map((lvl) => (
+                                    <button
+                                      key={lvl}
+                                      onClick={() => handleUpdateTrust(node.addr, entry.id, lvl)}
+                                      className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                                        entry.trust_level === lvl
+                                          ? trustLevelColors[lvl]
+                                          : 'bg-muted border-border hover:bg-muted/80'
+                                      }`}
+                                    >
+                                      {lvl}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <button
+                                  onClick={() => handleDeleteTrust(node.addr, entry.id)}
+                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ))}
         {nodes.length === 0 && (
