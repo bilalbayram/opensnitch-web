@@ -16,20 +16,34 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	nodeTags, err := a.db.GetAllNodeTags()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	syncStates, err := a.db.GetAllNodeTemplateSync()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
 	// Enrich with live status from node manager
 	liveNodes := a.nodes.GetAllNodes()
 	type enrichedNode struct {
-		Addr          string `json:"addr"`
-		Hostname      string `json:"hostname"`
-		DaemonVersion string `json:"daemon_version"`
-		DaemonUptime  int64  `json:"daemon_uptime"`
-		DaemonRules   int64  `json:"daemon_rules"`
-		Cons          int64  `json:"cons"`
-		ConsDropped   int64  `json:"cons_dropped"`
-		Status        string `json:"status"`
-		LastConn      string `json:"last_connection"`
-		Online        bool   `json:"online"`
-		Mode          string `json:"mode"`
+		Addr                string   `json:"addr"`
+		Hostname            string   `json:"hostname"`
+		DaemonVersion       string   `json:"daemon_version"`
+		DaemonUptime        int64    `json:"daemon_uptime"`
+		DaemonRules         int64    `json:"daemon_rules"`
+		Cons                int64    `json:"cons"`
+		ConsDropped         int64    `json:"cons_dropped"`
+		Status              string   `json:"status"`
+		LastConn            string   `json:"last_connection"`
+		Online              bool     `json:"online"`
+		Mode                string   `json:"mode"`
+		Tags                []string `json:"tags"`
+		TemplateSyncPending bool     `json:"template_sync_pending"`
+		TemplateSyncError   string   `json:"template_sync_error"`
 	}
 
 	result := make([]enrichedNode, len(nodes))
@@ -39,18 +53,26 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		if online {
 			status = "online"
 		}
+		tags := nodeTags[n.Addr]
+		if tags == nil {
+			tags = []string{}
+		}
+		syncState := syncStates[n.Addr]
 		result[i] = enrichedNode{
-			Addr:          n.Addr,
-			Hostname:      n.Hostname,
-			DaemonVersion: n.DaemonVersion,
-			DaemonUptime:  n.DaemonUptime,
-			DaemonRules:   n.DaemonRules,
-			Cons:          n.Cons,
-			ConsDropped:   n.ConsDropped,
-			Status:        status,
-			LastConn:      n.LastConn,
-			Online:        online,
-			Mode:          n.Mode,
+			Addr:                n.Addr,
+			Hostname:            n.Hostname,
+			DaemonVersion:       n.DaemonVersion,
+			DaemonUptime:        n.DaemonUptime,
+			DaemonRules:         n.DaemonRules,
+			Cons:                n.Cons,
+			ConsDropped:         n.ConsDropped,
+			Status:              status,
+			LastConn:            n.LastConn,
+			Online:              online,
+			Mode:                n.Mode,
+			Tags:                tags,
+			TemplateSyncPending: syncState.Pending,
+			TemplateSyncError:   syncState.Error,
 		}
 	}
 
@@ -64,7 +86,77 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "node not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, node)
+	tags, err := a.db.GetNodeTags(addr)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	syncState, err := a.db.GetNodeTemplateSync(addr)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"addr":                  node.Addr,
+		"hostname":              node.Hostname,
+		"daemon_version":        node.DaemonVersion,
+		"daemon_uptime":         node.DaemonUptime,
+		"daemon_rules":          node.DaemonRules,
+		"cons":                  node.Cons,
+		"cons_dropped":          node.ConsDropped,
+		"version":               node.Version,
+		"status":                node.Status,
+		"last_connection":       node.LastConn,
+		"mode":                  node.Mode,
+		"tags":                  tags,
+		"template_sync_pending": syncState.Pending,
+		"template_sync_error":   syncState.Error,
+	})
+}
+
+func (a *API) handleReplaceNodeTags(w http.ResponseWriter, r *http.Request) {
+	addr := chi.URLParam(r, "addr")
+	if _, err := a.db.GetNode(addr); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "node not found"})
+		return
+	}
+
+	var req struct {
+		Tags []string `json:"tags"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+
+	tags, err := a.db.ReplaceNodeTags(addr, req.Tags)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if a.templateSync != nil {
+		if err := a.templateSync.ReconcileNode(addr); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	syncState, err := a.db.GetNodeTemplateSync(addr)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"tags":                  tags,
+		"template_sync_pending": syncState.Pending,
+		"template_sync_error":   syncState.Error,
+	})
 }
 
 func (a *API) handleUpdateNodeConfig(w http.ResponseWriter, r *http.Request) {

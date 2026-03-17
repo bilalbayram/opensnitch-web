@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Network,
@@ -10,22 +10,29 @@ import {
   Flame,
   Bell,
   Settings,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useAppStore } from '@/stores/app-store';
+  Layers,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAppStore } from "@/stores/app-store";
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/connections', icon: Network, label: 'Connections' },
-  { to: '/seen-flows', icon: Network, label: 'Seen Flows' },
-  { to: '/dns', icon: Waypoints, label: 'DNS' },
-  { to: '/rules', icon: Shield, label: 'Rules' },
-  { to: '/blocklists', icon: ShieldBan, label: 'Blocklists' },
-  { to: '/nodes', icon: Server, label: 'Nodes' },
-  { to: '/stats/hosts', icon: BarChart3, label: 'Stats', matchPrefix: '/stats' },
-  { to: '/firewall', icon: Flame, label: 'Firewall' },
-  { to: '/alerts', icon: Bell, label: 'Alerts' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/connections", icon: Network, label: "Connections" },
+  { to: "/seen-flows", icon: Network, label: "Seen Flows" },
+  { to: "/dns", icon: Waypoints, label: "DNS" },
+  { to: "/rules", icon: Shield, label: "Rules" },
+  { to: "/templates", icon: Layers, label: "Templates" },
+  { to: "/blocklists", icon: ShieldBan, label: "Blocklists" },
+  { to: "/nodes", icon: Server, label: "Nodes" },
+  {
+    to: "/stats/hosts",
+    icon: BarChart3,
+    label: "Stats",
+    matchPrefix: "/stats",
+  },
+  { to: "/firewall", icon: Flame, label: "Firewall" },
+  { to: "/alerts", icon: Bell, label: "Alerts" },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export function Sidebar() {
@@ -38,9 +45,13 @@ export function Sidebar() {
       <div className="px-3 lg:px-4 py-5 border-b border-border">
         <div className="flex items-center gap-2">
           <Shield className="h-6 w-6 text-primary shrink-0" />
-          <span className="font-bold text-lg text-foreground hidden lg:block">OpenSnitch</span>
+          <span className="font-bold text-lg text-foreground hidden lg:block">
+            OpenSnitch
+          </span>
         </div>
-        <div className="text-xs text-muted-foreground mt-1 hidden lg:block">Web UI</div>
+        <div className="text-xs text-muted-foreground mt-1 hidden lg:block">
+          Web UI
+        </div>
       </div>
 
       {/* Nav */}
@@ -49,14 +60,16 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === "/"}
             className={({ isActive }) => {
-              const active = isActive || (item.matchPrefix && pathname.startsWith(item.matchPrefix));
+              const active =
+                isActive ||
+                (item.matchPrefix && pathname.startsWith(item.matchPrefix));
               return cn(
-                'flex items-center gap-3 px-3 lg:px-4 py-2.5 text-sm transition-colors relative group',
+                "flex items-center gap-3 px-3 lg:px-4 py-2.5 text-sm transition-colors relative group",
                 active
-                  ? 'bg-sidebar-active text-foreground border-r-2 border-primary'
-                  : 'text-sidebar-foreground hover:bg-sidebar-active/50 hover:text-foreground'
+                  ? "bg-sidebar-active text-foreground border-r-2 border-primary"
+                  : "text-sidebar-foreground hover:bg-sidebar-active/50 hover:text-foreground",
               );
             }}
           >
@@ -69,12 +82,12 @@ export function Sidebar() {
             </span>
 
             {/* Badges */}
-            {item.label === 'Nodes' && nodesOnline.size > 0 && (
+            {item.label === "Nodes" && nodesOnline.size > 0 && (
               <span className="ml-auto text-xs bg-success/20 text-success px-1.5 py-0.5 rounded-full hidden lg:inline">
                 {nodesOnline.size}
               </span>
             )}
-            {item.label === 'Alerts' && prompts.length > 0 && (
+            {item.label === "Alerts" && prompts.length > 0 && (
               <>
                 <span className="ml-auto text-xs bg-destructive/20 text-destructive px-1.5 py-0.5 rounded-full hidden lg:inline">
                   {prompts.length}
@@ -90,7 +103,7 @@ export function Sidebar() {
       {/* Footer */}
       <div className="px-3 lg:px-4 py-3 border-t border-border text-xs text-muted-foreground">
         <span className="hidden lg:inline">
-          {nodesOnline.size} node{nodesOnline.size !== 1 ? 's' : ''} online
+          {nodesOnline.size} node{nodesOnline.size !== 1 ? "s" : ""} online
         </span>
         <span className="lg:hidden text-center block text-[10px]">
           {nodesOnline.size}

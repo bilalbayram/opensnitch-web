@@ -149,6 +149,8 @@ func ProtoToDBRule(node string, observedAt time.Time, rule *pb.Rule) (*db.DBRule
 		Time:              FormatStoredTime(observedAt),
 		Node:              node,
 		Name:              rule.GetName(),
+		DisplayName:       rule.GetName(),
+		SourceKind:        db.RuleSourceManual,
 		Enabled:           rule.GetEnabled(),
 		Precedence:        rule.GetPrecedence(),
 		Action:            rule.GetAction(),

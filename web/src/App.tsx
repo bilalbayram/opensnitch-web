@@ -6,6 +6,7 @@ import DashboardPage from '@/pages/dashboard';
 import ConnectionsPage from '@/pages/connections';
 import SeenFlowsPage from '@/pages/seen-flows';
 import RulesPage from '@/pages/rules';
+import TemplatesPage from '@/pages/templates';
 import NodesPage from '@/pages/nodes';
 import StatsPage from '@/pages/stats';
 import FirewallPage from '@/pages/firewall';
@@ -36,6 +37,7 @@ function App() {
             <Route path="/seen-flows" element={<SeenFlowsPage />} />
             <Route path="/dns" element={<DNSPage />} />
             <Route path="/rules" element={<RulesPage />} />
+            <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
             <Route path="/stats" element={<Navigate to="/stats/hosts" replace />} />

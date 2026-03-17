@@ -11,6 +11,10 @@ type DBRule struct {
 	Time              string `json:"time"`
 	Node              string `json:"node"`
 	Name              string `json:"name"`
+	DisplayName       string `json:"display_name"`
+	SourceKind        string `json:"source_kind"`
+	TemplateID        int64  `json:"template_id"`
+	TemplateRuleID    int64  `json:"template_rule_id"`
 	Enabled           bool   `json:"enabled"`
 	Precedence        bool   `json:"precedence"`
 	Action            string `json:"action"`
@@ -25,11 +29,20 @@ type DBRule struct {
 	Created           string `json:"created"`
 }
 
+const (
+	RuleSourceManual  = "manual"
+	RuleSourceManaged = "managed"
+)
+
 const upsertRuleQuery = `
-	INSERT INTO rules (time, node, name, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO rules (time, node, name, display_name, source_kind, template_id, template_rule_id, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(node, name) DO UPDATE SET
 		time=excluded.time,
+		display_name=excluded.display_name,
+		source_kind=excluded.source_kind,
+		template_id=excluded.template_id,
+		template_rule_id=excluded.template_rule_id,
 		enabled=excluded.enabled,
 		precedence=excluded.precedence,
 		action=excluded.action,
@@ -150,8 +163,15 @@ func (d *Database) RevertGeneratedRules(node string, ruleNames []string, mode st
 }
 
 func upsertRule(exec ruleExecer, r *DBRule) error {
+	if strings.TrimSpace(r.SourceKind) == "" {
+		r.SourceKind = RuleSourceManual
+	}
+	if strings.TrimSpace(r.DisplayName) == "" {
+		r.DisplayName = r.Name
+	}
+
 	_, err := exec.Exec(upsertRuleQuery,
-		r.Time, r.Node, r.Name, r.Enabled, r.Precedence,
+		r.Time, r.Node, r.Name, r.DisplayName, r.SourceKind, r.TemplateID, r.TemplateRuleID, r.Enabled, r.Precedence,
 		r.Action, r.Duration, r.OperatorType, r.OperatorSensitive,
 		r.OperatorOperand, r.OperatorData, r.OperatorJSON, r.Description, r.Nolog, r.Created,
 	)
@@ -174,13 +194,13 @@ func (d *Database) GetRules(node string) ([]DBRule, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	query := "SELECT id, time, node, name, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created FROM rules"
+	query := "SELECT id, time, node, name, display_name, source_kind, template_id, template_rule_id, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created FROM rules"
 	args := []interface{}{}
 	if node != "" {
 		query += " WHERE node = ?"
 		args = append(args, node)
 	}
-	query += " ORDER BY name"
+	query += " ORDER BY node, name"
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
@@ -191,7 +211,7 @@ func (d *Database) GetRules(node string) ([]DBRule, error) {
 	var rules []DBRule
 	for rows.Next() {
 		var r DBRule
-		if err := rows.Scan(&r.ID, &r.Time, &r.Node, &r.Name, &r.Enabled, &r.Precedence, &r.Action, &r.Duration, &r.OperatorType, &r.OperatorSensitive, &r.OperatorOperand, &r.OperatorData, &r.OperatorJSON, &r.Description, &r.Nolog, &r.Created); err != nil {
+		if err := rows.Scan(&r.ID, &r.Time, &r.Node, &r.Name, &r.DisplayName, &r.SourceKind, &r.TemplateID, &r.TemplateRuleID, &r.Enabled, &r.Precedence, &r.Action, &r.Duration, &r.OperatorType, &r.OperatorSensitive, &r.OperatorOperand, &r.OperatorData, &r.OperatorJSON, &r.Description, &r.Nolog, &r.Created); err != nil {
 			return nil, err
 		}
 		rules = append(rules, r)
@@ -204,12 +224,34 @@ func (d *Database) GetRule(node, name string) (*DBRule, error) {
 	defer d.mu.RUnlock()
 
 	var r DBRule
-	err := d.db.QueryRow("SELECT id, time, node, name, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created FROM rules WHERE node = ? AND name = ?", node, name).
-		Scan(&r.ID, &r.Time, &r.Node, &r.Name, &r.Enabled, &r.Precedence, &r.Action, &r.Duration, &r.OperatorType, &r.OperatorSensitive, &r.OperatorOperand, &r.OperatorData, &r.OperatorJSON, &r.Description, &r.Nolog, &r.Created)
+	err := d.db.QueryRow("SELECT id, time, node, name, display_name, source_kind, template_id, template_rule_id, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created FROM rules WHERE node = ? AND name = ?", node, name).
+		Scan(&r.ID, &r.Time, &r.Node, &r.Name, &r.DisplayName, &r.SourceKind, &r.TemplateID, &r.TemplateRuleID, &r.Enabled, &r.Precedence, &r.Action, &r.Duration, &r.OperatorType, &r.OperatorSensitive, &r.OperatorOperand, &r.OperatorData, &r.OperatorJSON, &r.Description, &r.Nolog, &r.Created)
 	if err != nil {
 		return nil, err
 	}
 	return &r, nil
+}
+
+func (d *Database) GetManagedRules(node string) ([]DBRule, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query("SELECT id, time, node, name, display_name, source_kind, template_id, template_rule_id, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created FROM rules WHERE node = ? AND source_kind = ? ORDER BY name", node, RuleSourceManaged)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rules []DBRule
+	for rows.Next() {
+		var r DBRule
+		if err := rows.Scan(&r.ID, &r.Time, &r.Node, &r.Name, &r.DisplayName, &r.SourceKind, &r.TemplateID, &r.TemplateRuleID, &r.Enabled, &r.Precedence, &r.Action, &r.Duration, &r.OperatorType, &r.OperatorSensitive, &r.OperatorOperand, &r.OperatorData, &r.OperatorJSON, &r.Description, &r.Nolog, &r.Created); err != nil {
+			return nil, err
+		}
+		rules = append(rules, r)
+	}
+
+	return rules, nil
 }
 
 func (d *Database) DeleteRule(node, name string) error {
@@ -251,6 +293,63 @@ func (d *Database) SetRuleEnabled(node, name string, enabled bool) error {
 
 	if !enabled {
 		if err := deleteSeenFlowsBySourceRuleExec(tx, node, name); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (d *Database) ReplaceManagedRules(node string, rules []*DBRule) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec("DELETE FROM rules WHERE node = ? AND source_kind = ?", node, RuleSourceManaged); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		rule.Node = node
+		rule.SourceKind = RuleSourceManaged
+		if err := upsertRule(tx, rule); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (d *Database) ReplaceNodeRulesSnapshot(node string, rules []*DBRule) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec("DELETE FROM rules WHERE node = ?", node); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	for _, rule := range rules {
+		if rule == nil {
+			continue
+		}
+		rule.Node = node
+		if err := upsertRule(tx, rule); err != nil {
 			_ = tx.Rollback()
 			return err
 		}

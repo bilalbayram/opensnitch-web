@@ -67,17 +67,40 @@ func (n *NodeState) GetStats() *pb.Statistics {
 }
 
 func (n *NodeState) SendNotification(notif *pb.Notification) bool {
-	select {
-	case n.NotifyChan <- notif:
-		return true
-	default:
+	return n.SendNotifications([]*pb.Notification{notif})
+}
+
+func (n *NodeState) SendNotifications(notifs []*pb.Notification) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if !n.Connected {
 		return false
 	}
+	if len(notifs) == 0 {
+		return true
+	}
+	if len(n.NotifyChan)+len(notifs) > cap(n.NotifyChan) {
+		return false
+	}
+
+	for _, notif := range notifs {
+		if notif == nil {
+			continue
+		}
+		n.NotifyChan <- notif
+	}
+
+	return true
 }
 
 func (n *NodeState) Close() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	if !n.Connected {
+		return
+	}
 	n.Connected = false
 	// Send sentinel to break Notifications loop
 	select {

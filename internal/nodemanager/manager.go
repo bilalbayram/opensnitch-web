@@ -99,6 +99,17 @@ func (m *Manager) SendNotification(addr string, notif *pb.Notification) bool {
 	return node.SendNotification(notif)
 }
 
+func (m *Manager) SendNotificationBatch(addr string, notifs []*pb.Notification) bool {
+	m.mu.RLock()
+	node, ok := m.nodes[addr]
+	m.mu.RUnlock()
+
+	if !ok {
+		return false
+	}
+	return node.SendNotifications(notifs)
+}
+
 // BroadcastNotification sends a notification to all connected nodes
 func (m *Manager) BroadcastNotification(notif *pb.Notification) {
 	m.mu.RLock()
