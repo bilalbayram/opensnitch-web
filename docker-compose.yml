@@ -8,5 +8,6 @@ services:
       - "50051:50051" # gRPC for daemons
     volumes:
       - ./data:/app/data
-      - ./config.yaml:/app/config.yaml:ro
+      # To use a custom config, create config.yaml and uncomment:
+      # - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
