@@ -259,6 +259,7 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 	selectedRules := []*pb.Rule{}
 	selectedResponses := []*ruleResponse{}
 	dbRules := []*db.DBRule{}
+	selectedRuleNames := []string{}
 	for _, proposal := range preview.Data {
 		if _, ok := selectedSet[proposal.Fingerprint]; !ok {
 			continue
@@ -276,9 +277,16 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		response, err := buildRuleResponse(dbRule)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+
 		selectedRules = append(selectedRules, protoRule)
-		selectedResponses = append(selectedResponses, proposal.Rule)
+		selectedResponses = append(selectedResponses, response)
 		dbRules = append(dbRules, dbRule)
+		selectedRuleNames = append(selectedRuleNames, dbRule.Name)
 	}
 
 	if len(selectedRules) == 0 {
@@ -290,20 +298,19 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "node not connected"})
 		return
 	}
-	if !a.pushRulesToDaemon(filters.Node, selectedRules, pb.Action_CHANGE_RULE) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "node notification queue is full"})
+
+	previousMode, err := a.db.ApplyGeneratedRules(filters.Node, dbRules, "ask")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	for i := range dbRules {
-		if err := a.db.UpsertRule(dbRules[i]); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if !a.pushRulesToDaemon(filters.Node, selectedRules, pb.Action_CHANGE_RULE) {
+		if err := a.db.RevertGeneratedRules(filters.Node, selectedRuleNames, previousMode); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to rollback generated rules after notification failure: " + err.Error()})
 			return
 		}
-	}
-
-	if err := a.db.SetNodeMode(filters.Node, "ask"); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "node notification queue is full"})
 		return
 	}
 

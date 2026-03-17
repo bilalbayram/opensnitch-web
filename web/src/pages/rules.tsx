@@ -66,6 +66,13 @@ interface GeneratedRulePreview {
   rule: Rule;
 }
 
+interface GeneratedRulesRequest {
+  node: string;
+  since: string;
+  until: string;
+  exclude_processes: string[];
+}
+
 type RangePreset = '24h' | '48h' | '7d' | 'custom';
 
 const defaultForm: RuleForm = {
@@ -175,6 +182,7 @@ export default function RulesPage() {
   const [selectedFingerprints, setSelectedFingerprints] = useState<string[]>([]);
   const [previewSkippedExisting, setPreviewSkippedExisting] = useState(0);
   const [previewSkippedExcluded, setPreviewSkippedExcluded] = useState(0);
+  const [previewRequest, setPreviewRequest] = useState<GeneratedRulesRequest | null>(null);
   const [generatorError, setGeneratorError] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [applyingPreview, setApplyingPreview] = useState(false);
@@ -192,6 +200,14 @@ export default function RulesPage() {
     api.getRules(selectedNode || undefined).then(setRules).catch(console.error);
   };
 
+  const resetPreviewState = () => {
+    setPreview([]);
+    setSelectedFingerprints([]);
+    setPreviewSkippedExisting(0);
+    setPreviewSkippedExcluded(0);
+    setPreviewRequest(null);
+  };
+
   useEffect(() => {
     fetchNodes();
   }, []);
@@ -199,6 +215,12 @@ export default function RulesPage() {
   useEffect(() => {
     api.getRules(selectedNode || undefined).then(setRules).catch(console.error);
   }, [selectedNode]);
+
+  useEffect(() => {
+    if (!showGenerator) return;
+    resetPreviewState();
+    setGeneratorError('');
+  }, [showGenerator, selectedNode, rangePreset, customSince, customUntil, excludeProcesses]);
 
   const openCreateRule = () => {
     setForm({ ...defaultForm, node: selectedNode });
@@ -263,10 +285,7 @@ export default function RulesPage() {
     setCustomSince(formatDateTimeInput(range.since));
     setCustomUntil(formatDateTimeInput(range.until));
     setExcludeProcesses('');
-    setPreview([]);
-    setSelectedFingerprints([]);
-    setPreviewSkippedExisting(0);
-    setPreviewSkippedExcluded(0);
+    resetPreviewState();
     setGeneratorError('');
     setShowGenerator(true);
   };
@@ -280,7 +299,7 @@ export default function RulesPage() {
     }
   };
 
-  const buildGeneratorRequest = () => {
+  const buildGeneratorRequest = (): GeneratedRulesRequest | null => {
     if (!selectedNode) {
       setGeneratorError('Select a node before generating rules.');
       return null;
@@ -333,8 +352,10 @@ export default function RulesPage() {
       setSelectedFingerprints(items.map((item) => item.fingerprint));
       setPreviewSkippedExisting(res.skipped_existing || 0);
       setPreviewSkippedExcluded(res.skipped_excluded || 0);
+      setPreviewRequest(payload);
     } catch (e) {
       console.error('Failed to preview generated rules:', e);
+      resetPreviewState();
       setGeneratorError(e instanceof Error ? e.message : 'Failed to preview rules');
     } finally {
       setLoadingPreview(false);
@@ -342,8 +363,10 @@ export default function RulesPage() {
   };
 
   const handleApply = async () => {
-    const payload = buildGeneratorRequest();
-    if (!payload) return;
+    if (!previewRequest) {
+      setGeneratorError('Run preview again before applying rules.');
+      return;
+    }
     if (selectedFingerprints.length === 0) {
       setGeneratorError('Select at least one rule to apply.');
       return;
@@ -353,9 +376,10 @@ export default function RulesPage() {
     setGeneratorError('');
     try {
       await api.applyGeneratedRules({
-        ...payload,
+        ...previewRequest,
         fingerprints: selectedFingerprints,
       });
+      resetPreviewState();
       setShowGenerator(false);
       fetchRules();
       fetchNodes();
