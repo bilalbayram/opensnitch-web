@@ -46,3 +46,9 @@ export function alertTypeLabel(t: number): string {
     default: return 'Unknown';
   }
 }
+
+export function truncateMiddle(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  const half = Math.floor((maxLen - 3) / 2);
+  return `${str.slice(0, half)}...${str.slice(-half)}`;
+}
