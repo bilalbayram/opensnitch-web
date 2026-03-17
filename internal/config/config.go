@@ -17,6 +17,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
 	UI       UIConfig       `yaml:"ui"`
+	Update   UpdateConfig   `yaml:"update"`
 }
 
 type ServerConfig struct {
@@ -42,6 +43,12 @@ type UIConfig struct {
 	PromptTimeout int    `yaml:"prompt_timeout"`
 }
 
+type UpdateConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	CheckInterval time.Duration `yaml:"check_interval"`
+	GitHubRepo    string        `yaml:"github_repo"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -62,6 +69,11 @@ func DefaultConfig() *Config {
 		UI: UIConfig{
 			DefaultAction: "deny",
 			PromptTimeout: 120,
+		},
+		Update: UpdateConfig{
+			Enabled:       true,
+			CheckInterval: 6 * time.Hour,
+			GitHubRepo:    "evilsocket/opensnitch-web",
 		},
 	}
 }
