@@ -40,7 +40,7 @@ function App() {
             <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
-            <Route path="/stats" element={<Navigate to="/stats/hosts" replace />} />
+            <Route path="/stats" element={<Navigate to="/stats/timeline" replace />} />
             <Route path="/stats/:table" element={<StatsPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/alerts" element={<AlertsPage />} />

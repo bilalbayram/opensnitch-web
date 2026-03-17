@@ -93,6 +93,7 @@ func (d *Database) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_connections_dst_port ON connections(dst_port);
 	CREATE INDEX IF NOT EXISTS idx_connections_rule ON connections(rule);
 	CREATE INDEX IF NOT EXISTS idx_connections_node ON connections(node);
+	CREATE INDEX IF NOT EXISTS idx_connections_time_action ON connections(time, action);
 
 	CREATE TABLE IF NOT EXISTS nodes (
 		addr TEXT PRIMARY KEY,
@@ -319,6 +320,16 @@ func (d *Database) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_dns_domains_domain ON dns_domains(domain);
 	CREATE INDEX IF NOT EXISTS idx_dns_domains_ip ON dns_domains(ip);
 	CREATE INDEX IF NOT EXISTS idx_dns_domains_node ON dns_domains(node);
+
+	CREATE TABLE IF NOT EXISTS geoip_cache (
+		ip TEXT PRIMARY KEY,
+		country TEXT NOT NULL DEFAULT '',
+		country_code TEXT NOT NULL DEFAULT '',
+		city TEXT NOT NULL DEFAULT '',
+		lat REAL NOT NULL DEFAULT 0,
+		lon REAL NOT NULL DEFAULT 0,
+		cached_at TEXT NOT NULL DEFAULT ''
+	);
 	`
 
 	_, err := d.db.Exec(schema)

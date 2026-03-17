@@ -40,18 +40,17 @@ export default function DashboardPage() {
     totalRules += s.rules || 0;
   }
 
-  // Build traffic data from recent connections
-  const trafficBuckets = new Map<string, { time: string; allow: number; deny: number }>();
-  for (const conn of recentConnections.slice(0, 100)) {
-    const key = conn.time?.substring(0, 16) || 'now';
-    if (!trafficBuckets.has(key)) {
-      trafficBuckets.set(key, { time: key, allow: 0, deny: 0 });
-    }
-    const bucket = trafficBuckets.get(key)!;
-    if (conn.action === 'allow') bucket.allow++;
-    else bucket.deny++;
-  }
-  const trafficData = Array.from(trafficBuckets.values()).reverse().slice(-20);
+  // Server-side traffic data (last 1 hour)
+  const [trafficData, setTrafficData] = useState<Array<{ time: string; allow: number; deny: number }>>([]);
+  useEffect(() => {
+    const loadTraffic = () =>
+      api.getTimeSeries(1).then((d) =>
+        setTrafficData((d || []).map((p) => ({ time: p.bucket.slice(11, 16), allow: p.allow, deny: p.deny })))
+      ).catch(console.error);
+    loadTraffic();
+    const interval = setInterval(loadTraffic, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const recent = recentConnections.slice(0, 20);
 

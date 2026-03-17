@@ -18,6 +18,7 @@ type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
 	UI       UIConfig       `yaml:"ui"`
 	Update   UpdateConfig   `yaml:"update"`
+	GeoIP    GeoIPConfig    `yaml:"geoip"`
 }
 
 type ServerConfig struct {
@@ -49,6 +50,11 @@ type UpdateConfig struct {
 	GitHubRepo    string        `yaml:"github_repo"`
 }
 
+type GeoIPConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Provider string `yaml:"provider"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
@@ -74,6 +80,10 @@ func DefaultConfig() *Config {
 			Enabled:       true,
 			CheckInterval: 6 * time.Hour,
 			GitHubRepo:    "evilsocket/opensnitch-web",
+		},
+		GeoIP: GeoIPConfig{
+			Enabled:  true,
+			Provider: "ip-api",
 		},
 	}
 }
