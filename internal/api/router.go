@@ -76,6 +76,12 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Post("/api/v1/nodes/{addr}/firewall/enable", api.handleNodeAction(true, true))
 		r.Post("/api/v1/nodes/{addr}/firewall/disable", api.handleNodeAction(false, true))
 
+		// Process Trust
+		r.Get("/api/v1/nodes/{addr}/trust", api.handleGetProcessTrust)
+		r.Post("/api/v1/nodes/{addr}/trust", api.handleAddProcessTrust)
+		r.Put("/api/v1/nodes/{addr}/trust/{id}", api.handleUpdateProcessTrust)
+		r.Delete("/api/v1/nodes/{addr}/trust/{id}", api.handleDeleteProcessTrust)
+
 		// Rules
 		r.Get("/api/v1/rules", api.handleGetRules)
 		r.Post("/api/v1/rules", api.handleCreateRule)

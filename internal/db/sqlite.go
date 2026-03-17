@@ -213,6 +213,16 @@ func (d *Database) migrate() error {
 		FOREIGN KEY (blocklist_id) REFERENCES blocklists(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_blocklist_domains_domain ON blocklist_domains(domain);
+
+	CREATE TABLE IF NOT EXISTS process_trust (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		node TEXT NOT NULL DEFAULT '',
+		process_path TEXT NOT NULL DEFAULT '',
+		trust_level TEXT NOT NULL DEFAULT 'default',
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		UNIQUE(node, process_path)
+	);
+	CREATE INDEX IF NOT EXISTS idx_process_trust_lookup ON process_trust(node, process_path);
 	`
 
 	_, err := d.db.Exec(schema)
@@ -240,6 +250,24 @@ func (d *Database) migrate() error {
 	}
 	for _, bl := range defaultBlocklists {
 		d.db.Exec("INSERT OR IGNORE INTO blocklists (name, url, category) VALUES (?, ?, ?)", bl.name, bl.url, bl.category)
+	}
+
+	// Pre-seed default trusted processes (only if table is empty)
+	defaultTrustedProcesses := []string{
+		"/usr/bin/curl", "/usr/bin/wget", "/usr/bin/apt", "/usr/bin/apt-get",
+		"/usr/lib/apt/methods/http", "/usr/lib/apt/methods/https",
+		"/usr/bin/dpkg", "/usr/bin/snap", "/usr/bin/flatpak",
+		"/usr/lib/systemd/systemd-resolved", "/usr/lib/systemd/systemd-timesyncd",
+		"/usr/lib/systemd/systemd-networkd", "/usr/sbin/NetworkManager",
+		"/usr/bin/node", "/usr/bin/git", "/usr/bin/ssh", "/usr/bin/gpg",
+		"/usr/bin/gpgv", "/usr/lib/gnupg/dirmngr", "/usr/bin/python3",
+	}
+	var trustCount int
+	d.db.QueryRow("SELECT COUNT(*) FROM process_trust").Scan(&trustCount)
+	if trustCount == 0 {
+		for _, p := range defaultTrustedProcesses {
+			d.db.Exec("INSERT OR IGNORE INTO process_trust (node, process_path, trust_level) VALUES ('*', ?, 'trusted')", p)
+		}
 	}
 
 	log.Println("[db] Schema migration completed")
