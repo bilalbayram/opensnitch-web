@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MainLayout } from '@/components/layout/main-layout';
 import LoginPage from '@/pages/login';
@@ -33,10 +33,10 @@ function App() {
             <Route path="/rules" element={<RulesPage />} />
             <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
+            <Route path="/stats" element={<Navigate to="/stats/hosts" replace />} />
             <Route path="/stats/:table" element={<StatsPage />} />
             <Route path="/firewall" element={<FirewallPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
-
           </Route>
         </Routes>
       </BrowserRouter>

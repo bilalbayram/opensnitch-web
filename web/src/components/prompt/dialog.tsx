@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/app-store';
 import { api } from '@/lib/api';
-import { Shield, X, Clock } from 'lucide-react';
+import { Shield, Clock } from 'lucide-react';
 
 const durations = [
   { value: 'once', label: 'Once' },
-  { value: '5m', label: '5 minutes' },
-  { value: '15m', label: '15 minutes' },
-  { value: '30m', label: '30 minutes' },
+  { value: '5m', label: '5 min' },
+  { value: '15m', label: '15 min' },
+  { value: '30m', label: '30 min' },
   { value: '1h', label: '1 hour' },
-  { value: 'until restart', label: 'Until restart' },
+  { value: 'until restart', label: 'Restart' },
   { value: 'always', label: 'Always' },
 ];
 
@@ -69,32 +69,38 @@ export function PromptOverlay() {
   };
 
   const progressPercent = (countdown / 120) * 100;
+  const urgent = countdown <= 30;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-warning" />
-            <h2 className="font-semibold">Connection Request</h2>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center">
+      <div className="bg-card border-t md:border border-border md:rounded-xl md:shadow-2xl w-full md:max-w-lg max-h-[100vh] md:max-h-[90vh] flex flex-col rounded-t-2xl md:rounded-xl">
+        {/* Drag handle (mobile) */}
+        <div className="flex justify-center pt-2 md:hidden">
+          <div className="w-10 h-1 rounded-full bg-border" />
+        </div>
+
+        {/* Header + Progress */}
+        <div className="shrink-0">
+          <div className="flex items-center justify-between px-5 py-3 md:py-4">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-warning" />
+              <h2 className="font-semibold text-sm md:text-base">Connection Request</h2>
+            </div>
+            <div className={`flex items-center gap-1.5 text-sm ${urgent ? 'text-destructive' : 'text-muted-foreground'}`}>
+              <Clock className="h-4 w-4" />
+              <span className="tabular-nums font-medium">{countdown}s</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>{countdown}s</span>
+          <div className="h-1 bg-muted">
+            <div
+              className={`h-full transition-all duration-1000 ${urgent ? 'bg-destructive' : 'bg-warning'}`}
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-1 bg-muted">
-          <div
-            className="h-full bg-warning transition-all duration-1000"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-
-        {/* Body */}
-        <div className="px-5 py-4 space-y-4">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
           {/* Process info */}
           <div className="bg-muted rounded-lg p-3 space-y-1.5">
             <div className="text-xs text-muted-foreground">Process</div>
@@ -108,7 +114,7 @@ export function PromptOverlay() {
           {/* Connection info */}
           <div className="bg-muted rounded-lg p-3 space-y-1.5">
             <div className="text-xs text-muted-foreground">Connection</div>
-            <div className="font-mono text-sm">
+            <div className="font-mono text-sm break-all">
               {prompt.protocol?.toUpperCase()} {prompt.src_ip}:{prompt.src_port} → {prompt.dst_host || prompt.dst_ip}:{prompt.dst_port}
             </div>
             {prompt.dst_host && prompt.dst_ip && (
@@ -124,7 +130,7 @@ export function PromptOverlay() {
             <select
               value={operand}
               onChange={(e) => setOperand(e.target.value)}
-              className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm"
+              className="w-full bg-muted border border-border rounded-lg px-3 py-2.5 text-sm"
             >
               <option value="process.path">Process: {prompt.process}</option>
               {prompt.dst_host && <option value="dest.host">Host: {prompt.dst_host}</option>}
@@ -134,7 +140,7 @@ export function PromptOverlay() {
             </select>
           </div>
 
-          {/* Duration selector */}
+          {/* Duration selector — larger touch targets on mobile */}
           <div>
             <label className="text-xs text-muted-foreground block mb-1.5">Duration</label>
             <div className="flex flex-wrap gap-1.5">
@@ -142,7 +148,7 @@ export function PromptOverlay() {
                 <button
                   key={d.value}
                   onClick={() => setDuration(d.value)}
-                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                  className={`px-3 py-2 md:px-2.5 md:py-1 text-xs rounded-lg border transition-colors ${
                     duration === d.value
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-muted border-border text-muted-foreground hover:text-foreground'
@@ -155,29 +161,31 @@ export function PromptOverlay() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex gap-3 px-5 py-4 border-t border-border">
-          <button
-            onClick={() => handleReply('deny')}
-            disabled={loading}
-            className="flex-1 bg-destructive hover:bg-destructive/80 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            Deny
-          </button>
-          <button
-            onClick={() => handleReply('reject')}
-            disabled={loading}
-            className="flex-1 bg-warning hover:bg-warning/80 text-black rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            Reject
-          </button>
-          <button
-            onClick={() => handleReply('allow')}
-            disabled={loading}
-            className="flex-1 bg-success hover:bg-success/80 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            Allow
-          </button>
+        {/* Sticky action buttons — always visible */}
+        <div className="shrink-0 border-t border-border bg-card px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleReply('deny')}
+              disabled={loading}
+              className="flex-1 bg-destructive hover:bg-destructive/80 text-white rounded-xl py-3 md:py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 active:scale-[0.98]"
+            >
+              Deny
+            </button>
+            <button
+              onClick={() => handleReply('reject')}
+              disabled={loading}
+              className="flex-1 bg-warning hover:bg-warning/80 text-black rounded-xl py-3 md:py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 active:scale-[0.98]"
+            >
+              Reject
+            </button>
+            <button
+              onClick={() => handleReply('allow')}
+              disabled={loading}
+              className="flex-1 bg-success hover:bg-success/80 text-white rounded-xl py-3 md:py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 active:scale-[0.98]"
+            >
+              Allow
+            </button>
+          </div>
         </div>
       </div>
     </div>

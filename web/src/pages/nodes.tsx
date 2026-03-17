@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { formatUptime } from '@/lib/utils';
 import { Server, Play, Pause, Shield, ShieldOff, ShieldCheck, ChevronDown, ChevronUp, Trash2, Plus } from 'lucide-react';
+import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 
 const modeOptions = [
   { value: 'ask', label: 'Ask', description: 'Prompt for every unknown connection' },
@@ -134,7 +135,7 @@ export default function NodesPage() {
 
       <div className="grid gap-4">
         {nodes.map((node) => (
-          <div key={node.addr} className="bg-card border border-border rounded-xl p-5">
+          <div key={node.addr} className="bg-card border border-border rounded-xl p-4 md:p-5">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${node.online ? 'bg-success/10' : 'bg-muted'}`}>
@@ -154,7 +155,7 @@ export default function NodesPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-4 text-sm">
               <div>
                 <div className="text-xs text-muted-foreground">Version</div>
                 <div>{node.daemon_version || '-'}</div>
@@ -174,15 +175,15 @@ export default function NodesPage() {
             </div>
 
             {/* Mode selector */}
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex flex-wrap items-center gap-2 md:gap-3">
               <span className="text-xs text-muted-foreground">Mode:</span>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {modeOptions.map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => handleModeChange(node.addr, opt.value)}
                     title={opt.description}
-                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                    className={`text-xs px-3 py-2 md:py-1.5 rounded-lg border transition-colors ${
                       node.mode === opt.value
                         ? opt.value === 'ask'
                           ? 'bg-primary/10 text-primary border-primary/30'
@@ -208,28 +209,28 @@ export default function NodesPage() {
             </div>
 
             {node.online && (
-              <div className="flex gap-2 mt-4">
+              <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   onClick={() => handleAction(node.addr, 'enable-interception')}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 md:py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
                 >
-                  <Play className="h-3 w-3" /> Enable Interception
+                  <Play className="h-3 w-3" /> <span className="hidden sm:inline">Enable</span> Interception
                 </button>
                 <button
                   onClick={() => handleAction(node.addr, 'disable-interception')}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 md:py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
                 >
-                  <Pause className="h-3 w-3" /> Disable Interception
+                  <Pause className="h-3 w-3" /> <span className="hidden sm:inline">Disable</span> Interception
                 </button>
                 <button
                   onClick={() => handleAction(node.addr, 'enable-firewall')}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 md:py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
                 >
                   <Shield className="h-3 w-3" /> Enable FW
                 </button>
                 <button
                   onClick={() => handleAction(node.addr, 'disable-firewall')}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 md:py-1.5 rounded-lg bg-muted hover:bg-muted/80 border border-border"
                 >
                   <ShieldOff className="h-3 w-3" /> Disable FW
                 </button>
@@ -240,7 +241,7 @@ export default function NodesPage() {
             <div className="mt-4 border-t border-border pt-4">
               <button
                 onClick={() => toggleTrustExpand(node.addr)}
-                className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors w-full"
+                className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors w-full py-1"
               >
                 <ShieldCheck className="h-4 w-4" />
                 Trust List ({trustData[node.addr]?.length || 0} entries)
@@ -248,89 +249,127 @@ export default function NodesPage() {
               </button>
 
               {trustExpanded[node.addr] && (
-                <div className="mt-3 space-y-2">
-                  {/* Add new entry */}
-                  <div className="flex gap-2 items-center">
+                <div className="mt-3 space-y-3">
+                  {/* Add new entry — stack on mobile */}
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       placeholder="/usr/bin/..."
                       value={newTrustPath[node.addr] || ''}
                       onChange={(e) => setNewTrustPath((prev) => ({ ...prev, [node.addr]: e.target.value }))}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddTrust(node.addr)}
-                      className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                      className="flex-1 text-xs px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
                     />
-                    <select
-                      value={newTrustLevel[node.addr] || 'trusted'}
-                      onChange={(e) => setNewTrustLevel((prev) => ({ ...prev, [node.addr]: e.target.value }))}
-                      className="text-xs px-2 py-1.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
-                    >
-                      {trustLevelOptions.map((lvl) => (
-                        <option key={lvl} value={lvl}>{lvl}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => handleAddTrust(node.addr)}
-                      className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20"
-                    >
-                      <Plus className="h-3 w-3" /> Add
-                    </button>
+                    <div className="flex gap-2">
+                      <select
+                        value={newTrustLevel[node.addr] || 'trusted'}
+                        onChange={(e) => setNewTrustLevel((prev) => ({ ...prev, [node.addr]: e.target.value }))}
+                        className="text-xs px-2 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                      >
+                        {trustLevelOptions.map((lvl) => (
+                          <option key={lvl} value={lvl}>{lvl}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleAddTrust(node.addr)}
+                        className="flex items-center gap-1 text-xs px-3 py-2 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20"
+                      >
+                        <Plus className="h-3 w-3" /> Add
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Trust entries table */}
+                  {/* Trust entries */}
                   {trustData[node.addr]?.length > 0 && (
-                    <div className="rounded-lg border border-border overflow-hidden">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-muted/50">
-                            <th className="text-left px-3 py-2 font-medium">Process Path</th>
-                            <th className="text-left px-3 py-2 font-medium w-20">Scope</th>
-                            <th className="text-left px-3 py-2 font-medium w-52">Trust Level</th>
-                            <th className="w-10"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {trustData[node.addr].map((entry: any) => (
-                            <tr key={entry.id} className="border-t border-border">
-                              <td className="px-3 py-2 font-mono">{entry.process_path}</td>
-                              <td className="px-3 py-2">
-                                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                  entry.node === '*'
-                                    ? 'bg-muted text-muted-foreground'
-                                    : 'bg-primary/10 text-primary'
-                                }`}>
-                                  {entry.node === '*' ? 'Global' : 'This node'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex gap-1">
-                                  {trustLevelOptions.map((lvl) => (
-                                    <button
-                                      key={lvl}
-                                      onClick={() => handleUpdateTrust(node.addr, entry.id, lvl)}
-                                      className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-                                        entry.trust_level === lvl
-                                          ? trustLevelColors[lvl]
-                                          : 'bg-muted border-border hover:bg-muted/80'
-                                      }`}
-                                    >
-                                      {lvl}
-                                    </button>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2">
+                    <ResponsiveDataView
+                      data={trustData[node.addr] || []}
+                      columns={4}
+                      emptyMessage="No trust entries"
+                      tableHead={
+                        <tr className="bg-muted/50">
+                          <th className="text-left px-3 py-2 text-xs font-medium">Process Path</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium w-20">Scope</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium w-52">Trust Level</th>
+                          <th className="w-10"></th>
+                        </tr>
+                      }
+                      renderRow={(entry: any) => (
+                        <tr key={entry.id} className="border-t border-border">
+                          <td className="px-3 py-2 font-mono text-xs">{entry.process_path}</td>
+                          <td className="px-3 py-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              entry.node === '*'
+                                ? 'bg-muted text-muted-foreground'
+                                : 'bg-primary/10 text-primary'
+                            }`}>
+                              {entry.node === '*' ? 'Global' : 'This node'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex gap-1">
+                              {trustLevelOptions.map((lvl) => (
                                 <button
-                                  onClick={() => handleDeleteTrust(node.addr, entry.id)}
-                                  className="text-muted-foreground hover:text-destructive transition-colors"
+                                  key={lvl}
+                                  onClick={() => handleUpdateTrust(node.addr, entry.id, lvl)}
+                                  className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+                                    entry.trust_level === lvl
+                                      ? trustLevelColors[lvl]
+                                      : 'bg-muted border-border hover:bg-muted/80'
+                                  }`}
                                 >
-                                  <Trash2 className="h-3.5 w-3.5" />
+                                  {lvl}
                                 </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <button
+                              onClick={() => handleDeleteTrust(node.addr, entry.id)}
+                              className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      renderCard={(entry: any) => (
+                        <div key={entry.id} className="bg-muted/30 border border-border rounded-xl p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-mono text-xs break-all flex-1">{entry.process_path}</div>
+                            <button
+                              onClick={() => handleDeleteTrust(node.addr, entry.id)}
+                              className="text-muted-foreground hover:text-destructive transition-colors p-1.5 shrink-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              entry.node === '*'
+                                ? 'bg-muted text-muted-foreground'
+                                : 'bg-primary/10 text-primary'
+                            }`}>
+                              {entry.node === '*' ? 'Global' : 'This node'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {trustLevelOptions.map((lvl) => (
+                              <button
+                                key={lvl}
+                                onClick={() => handleUpdateTrust(node.addr, entry.id, lvl)}
+                                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                                  entry.trust_level === lvl
+                                    ? trustLevelColors[lvl]
+                                    : 'bg-muted border-border hover:bg-muted/80'
+                                }`}
+                              >
+                                {lvl}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    />
                   )}
                 </div>
               )}

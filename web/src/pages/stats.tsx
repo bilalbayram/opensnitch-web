@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useIsMobile } from '@/hooks/use-media-query';
+
+const tabs = [
+  { key: 'hosts', label: 'Hosts' },
+  { key: 'processes', label: 'Processes' },
+  { key: 'addresses', label: 'Addresses' },
+  { key: 'ports', label: 'Ports' },
+  { key: 'users', label: 'Users' },
+];
 
 const tableTitles: Record<string, string> = {
   hosts: 'Top Hosts',
@@ -14,6 +23,8 @@ const tableTitles: Record<string, string> = {
 
 export default function StatsPage() {
   const { table } = useParams<{ table: string }>();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<any[]>([]);
 
   useEffect(() => {
@@ -35,11 +46,28 @@ export default function StatsPage() {
   }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <h1 className="text-xl font-bold">{tableTitles[table || ''] || 'Stats'}</h1>
 
-      {/* Chart */}
-      {chartData.length > 0 && (
+      {/* Tab bar */}
+      <div className="flex gap-1 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => navigate(`/stats/${t.key}`)}
+            className={`shrink-0 px-4 py-2 text-sm rounded-lg border transition-colors ${
+              table === t.key
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chart — hidden on mobile for better UX */}
+      {chartData.length > 0 && !isMobile && (
         <div className="bg-card border border-border rounded-xl p-4">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData} layout="vertical" margin={{ left: 150 }}>
@@ -57,7 +85,7 @@ export default function StatsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table — works well at all sizes since it's only 4 columns */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -73,7 +101,7 @@ export default function StatsPage() {
               {data.map((d, i) => (
                 <tr key={i} className="border-b border-border/50 hover:bg-muted/50">
                   <td className="px-4 py-2 text-xs text-muted-foreground">{i + 1}</td>
-                  <td className="px-4 py-2 font-mono text-xs" title={d.what}>{displayValue(d.what)}</td>
+                  <td className="px-4 py-2 font-mono text-xs break-all" title={d.what}>{displayValue(d.what)}</td>
                   <td className="px-4 py-2 text-xs">{formatNumber(d.hits)}</td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{d.node}</td>
                 </tr>

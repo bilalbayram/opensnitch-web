@@ -24,9 +24,37 @@ body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent iOS rubber-band overscroll on modals */
+.overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+/* Safe area for notched phones */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-background); }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  button, a, select, input[type="checkbox"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exempt inline text and small badges */
+  span.badge, .inline-action {
+    min-height: auto;
+    min-width: auto;
+  }
+}
