@@ -156,7 +156,7 @@ func (a *API) handleCreateDNSServerRules(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		resp, err := buildRuleResponse(dbRule)
+		resp, err := a.buildRuleResponse(dbRule)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -193,7 +193,7 @@ func (a *API) handleCreateDNSServerRules(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	denyResp, err := buildRuleResponse(dbDeny)
+	denyResp, err := a.buildRuleResponse(dbDeny)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

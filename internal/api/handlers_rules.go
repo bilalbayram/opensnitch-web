@@ -36,6 +36,11 @@ type ruleResponse struct {
 	Time              string       `json:"time"`
 	Node              string       `json:"node"`
 	Name              string       `json:"name"`
+	DisplayName       string       `json:"display_name"`
+	SourceKind        string       `json:"source_kind"`
+	TemplateID        int64        `json:"template_id"`
+	TemplateName      string       `json:"template_name,omitempty"`
+	TemplateRuleID    int64        `json:"template_rule_id"`
 	Enabled           bool         `json:"enabled"`
 	Precedence        bool         `json:"precedence"`
 	Action            string       `json:"action"`
@@ -102,7 +107,7 @@ func (a *API) handleGetRules(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]ruleResponse, 0, len(rules))
 	for i := range rules {
-		item, err := buildRuleResponse(&rules[i])
+		item, err := a.buildRuleResponse(&rules[i])
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -117,6 +122,9 @@ func (a *API) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 	var req ruleRequest
 	if err := readJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	if !a.requireConnectedRuleTarget(w, req.Node) {
 		return
 	}
 
@@ -134,7 +142,7 @@ func (a *API) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 
 	a.pushRulesToDaemon(req.Node, []*pb.Rule{protoRule}, pb.Action_CHANGE_RULE)
 
-	response, err := buildRuleResponse(dbRule)
+	response, err := a.buildRuleResponse(dbRule)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -157,10 +165,17 @@ func (a *API) handleUpdateRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Name = name
+	if !a.requireConnectedRuleTarget(w, req.Node) {
+		return
+	}
 
 	existing, err := a.db.GetRule(req.Node, name)
 	switch {
 	case err == nil:
+		if existing.SourceKind == db.RuleSourceManaged {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "template-managed rules must be edited from the Templates page"})
+			return
+		}
 		isCompound, err := dbRuleIsCompound(existing)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -190,7 +205,7 @@ func (a *API) handleUpdateRule(w http.ResponseWriter, r *http.Request) {
 
 	a.pushRulesToDaemon(req.Node, []*pb.Rule{protoRule}, pb.Action_CHANGE_RULE)
 
-	response, err := buildRuleResponse(dbRule)
+	response, err := a.buildRuleResponse(dbRule)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -277,7 +292,7 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		response, err := buildRuleResponse(dbRule)
+		response, err := a.buildRuleResponse(dbRule)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
@@ -332,6 +347,22 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	node := r.URL.Query().Get("node")
+	if !a.requireConnectedRuleTarget(w, node) {
+		return
+	}
+
+	existing, err := a.db.GetRule(node, name)
+	switch {
+	case err == nil:
+		if existing.SourceKind == db.RuleSourceManaged {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "template-managed rules must be deleted from the Templates page"})
+			return
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
 	if err := a.db.DeleteRule(node, name); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -365,6 +396,22 @@ func (a *API) handleToggleRule(enable bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "name")
 		node := r.URL.Query().Get("node")
+		if !a.requireConnectedRuleTarget(w, node) {
+			return
+		}
+
+		existing, err := a.db.GetRule(node, name)
+		switch {
+		case err == nil:
+			if existing.SourceKind == db.RuleSourceManaged {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "template-managed rules must be changed from the Templates page"})
+				return
+			}
+		case errors.Is(err, sql.ErrNoRows):
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 
 		var actionType pb.Action
 		if enable {
@@ -396,10 +443,29 @@ func (a *API) handleToggleRule(enable bool) http.HandlerFunc {
 	}
 }
 
-func buildRuleResponse(rule *db.DBRule) (*ruleResponse, error) {
+func (a *API) buildRuleResponse(rule *db.DBRule) (*ruleResponse, error) {
 	operator, err := ruleutil.DBRuleOperator(rule)
 	if err != nil {
 		return nil, err
+	}
+
+	templateName := ""
+	if rule.TemplateID > 0 {
+		template, err := a.db.GetRuleTemplate(rule.TemplateID)
+		if err == nil {
+			templateName = template.Name
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+
+	displayName := rule.DisplayName
+	if strings.TrimSpace(displayName) == "" {
+		displayName = rule.Name
+	}
+	sourceKind := rule.SourceKind
+	if strings.TrimSpace(sourceKind) == "" {
+		sourceKind = db.RuleSourceManual
 	}
 
 	return &ruleResponse{
@@ -407,6 +473,11 @@ func buildRuleResponse(rule *db.DBRule) (*ruleResponse, error) {
 		Time:              rule.Time,
 		Node:              rule.Node,
 		Name:              rule.Name,
+		DisplayName:       displayName,
+		SourceKind:        sourceKind,
+		TemplateID:        rule.TemplateID,
+		TemplateName:      templateName,
+		TemplateRuleID:    rule.TemplateRuleID,
 		Enabled:           rule.Enabled,
 		Precedence:        rule.Precedence,
 		Action:            rule.Action,
@@ -603,7 +674,7 @@ func (a *API) buildGeneratedRulesPreview(filters *generateRulesFilters) (*genera
 		if err != nil {
 			return nil, err
 		}
-		rule, err := buildRuleResponse(dbRule)
+		rule, err := a.buildRuleResponse(dbRule)
 		if err != nil {
 			return nil, err
 		}
@@ -638,4 +709,17 @@ func (a *API) pushRulesToDaemon(nodeAddr string, rules []*pb.Rule, action pb.Act
 
 	a.nodes.BroadcastNotification(notif)
 	return true
+}
+
+func (a *API) requireConnectedRuleTarget(w http.ResponseWriter, node string) bool {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return true
+	}
+	if a.nodes.GetNode(node) != nil {
+		return true
+	}
+
+	writeJSON(w, http.StatusConflict, map[string]string{"error": "node not connected"})
+	return false
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/updater"
 	"github.com/evilsocket/opensnitch-web/internal/version"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
@@ -50,6 +51,7 @@ func main() {
 	nodes := nodemanager.NewManager()
 	hub := ws.NewHub()
 	p := prompter.New(cfg.UI.PromptTimeout)
+	templateSync := templatesync.New(database, nodes)
 
 	// Wire up prompter → WebSocket broadcasts
 	p.OnNewPrompt = func(prompt *prompter.PendingPrompt) {
@@ -105,7 +107,7 @@ func main() {
 	go upd.StartPeriodicCheck(updCtx)
 
 	// Create gRPC server
-	uiService := grpcserver.NewUIService(nodes, database, hub, p)
+	uiService := grpcserver.NewUIService(nodes, database, hub, p, templateSync)
 	grpcSrv := grpcserver.New(uiService)
 
 	go func() {
@@ -140,7 +142,7 @@ func main() {
 	}
 
 	// Create HTTP server
-	router := api.NewRouter(cfg, database, nodes, hub, p, frontendFS, upd)
+	router := api.NewRouter(cfg, database, nodes, hub, p, templateSync, frontendFS, upd)
 	httpSrv := &http.Server{Addr: cfg.Server.HTTPAddr, Handler: router}
 
 	go func() {

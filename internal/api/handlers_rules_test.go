@@ -20,6 +20,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
 	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
+	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 	pb "github.com/evilsocket/opensnitch-web/proto"
 )
@@ -47,11 +48,12 @@ func newAPITestEnv(t *testing.T) *apiTestEnv {
 		prompter: prompter.New(1),
 	}
 	env.api = &API{
-		cfg:      config.DefaultConfig(),
-		db:       env.database,
-		nodes:    env.nodes,
-		hub:      env.hub,
-		prompter: env.prompter,
+		cfg:          config.DefaultConfig(),
+		db:           env.database,
+		nodes:        env.nodes,
+		hub:          env.hub,
+		prompter:     env.prompter,
+		templateSync: templatesync.New(env.database, env.nodes),
 	}
 
 	t.Cleanup(func() {
@@ -323,6 +325,135 @@ func TestHandleGenerateRulesApplyRequiresOnlineNode(t *testing.T) {
 	}
 }
 
+func TestHandleCreateRuleRejectsOfflineNode(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.seedNode(t, "node-a", false)
+
+	rec := performJSONRequest(t, env.api.handleCreateRule, http.MethodPost, "/api/v1/rules", ruleRequest{
+		Name:            "offline-create",
+		Node:            "node-a",
+		Enabled:         true,
+		Action:          "allow",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    "/usr/bin/curl",
+	})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for offline create, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rules, err := env.database.GetRules("node-a")
+	if err != nil {
+		t.Fatalf("get rules after failed create: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("expected no persisted rules after failed create, got %+v", rules)
+	}
+}
+
+func TestHandleNodeScopedRuleMutationsRejectOfflineNode(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler func(env *apiTestEnv) http.HandlerFunc
+		method  string
+		target  string
+		payload any
+		check   func(t *testing.T, env *apiTestEnv, ruleName string)
+	}{
+		{
+			name:   "update",
+			method: http.MethodPut,
+			target: "/api/v1/rules/offline-rule",
+			handler: func(env *apiTestEnv) http.HandlerFunc {
+				return env.api.handleUpdateRule
+			},
+			payload: ruleRequest{
+				Node:            "node-a",
+				Enabled:         true,
+				Action:          "deny",
+				Duration:        "always",
+				OperatorType:    "simple",
+				OperatorOperand: "process.path",
+				OperatorData:    "/usr/bin/curl",
+			},
+			check: func(t *testing.T, env *apiTestEnv, ruleName string) {
+				t.Helper()
+				stored, err := env.database.GetRule("node-a", ruleName)
+				if err != nil {
+					t.Fatalf("get rule after failed update: %v", err)
+				}
+				if stored.Action != "allow" {
+					t.Fatalf("expected rule action to remain allow, got %+v", stored)
+				}
+			},
+		},
+		{
+			name:   "delete",
+			method: http.MethodDelete,
+			target: "/api/v1/rules/offline-rule?node=node-a",
+			handler: func(env *apiTestEnv) http.HandlerFunc {
+				return env.api.handleDeleteRule
+			},
+			check: func(t *testing.T, env *apiTestEnv, ruleName string) {
+				t.Helper()
+				stored, err := env.database.GetRule("node-a", ruleName)
+				if err != nil {
+					t.Fatalf("get rule after failed delete: %v", err)
+				}
+				if stored == nil {
+					t.Fatal("expected rule to remain after failed delete")
+				}
+			},
+		},
+		{
+			name:   "disable",
+			method: http.MethodPost,
+			target: "/api/v1/rules/offline-rule/disable?node=node-a",
+			handler: func(env *apiTestEnv) http.HandlerFunc {
+				return env.api.handleToggleRule(false)
+			},
+			check: func(t *testing.T, env *apiTestEnv, ruleName string) {
+				t.Helper()
+				stored, err := env.database.GetRule("node-a", ruleName)
+				if err != nil {
+					t.Fatalf("get rule after failed disable: %v", err)
+				}
+				if !stored.Enabled {
+					t.Fatalf("expected rule to remain enabled, got %+v", stored)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAPITestEnv(t)
+			env.seedNode(t, "node-a", false)
+
+			ruleName := "offline-rule"
+			env.insertRule(t, "node-a", &pb.Rule{
+				Name:     ruleName,
+				Action:   "allow",
+				Duration: "always",
+				Enabled:  true,
+				Operator: &pb.Operator{
+					Type:    "simple",
+					Operand: "process.path",
+					Data:    "/usr/bin/curl",
+				},
+			})
+
+			rec := performJSONRequestWithRuleName(t, tc.handler(env), tc.method, tc.target, ruleName, tc.payload)
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("expected 409 for offline %s, got %d: %s", tc.name, rec.Code, rec.Body.String())
+			}
+
+			tc.check(t, env, ruleName)
+		})
+	}
+}
+
 func TestHandleGenerateRulesApplyBatchesRulesAndSwitchesMode(t *testing.T) {
 	env := newAPITestEnv(t)
 	env.seedNode(t, "node-a", true)
@@ -396,7 +527,7 @@ func TestHandleGenerateRulesApplyBatchesRulesAndSwitchesMode(t *testing.T) {
 		t.Fatalf("expected 1 persisted rule, got %d", len(rules))
 	}
 
-	persisted, err := buildRuleResponse(&rules[0])
+	persisted, err := env.api.buildRuleResponse(&rules[0])
 	if err != nil {
 		t.Fatalf("build persisted rule response: %v", err)
 	}
@@ -495,7 +626,7 @@ func TestHandleGenerateRulesApplyQueueFullRollsBackState(t *testing.T) {
 
 func TestHandleGetRulesReturnsCompoundRuleRoundTripFromSubscribe(t *testing.T) {
 	env := newAPITestEnv(t)
-	service := grpcserver.NewUIService(env.nodes, env.database, env.hub, env.prompter)
+	service := grpcserver.NewUIService(env.nodes, env.database, env.hub, env.prompter, env.api.templateSync)
 
 	compoundRule := ruleutil.BuildGeneratedRule(ruleutil.LearningKey{
 		Process:         "/usr/bin/curl",
@@ -569,7 +700,7 @@ func TestHandleUpdateRuleRejectsCompoundRules(t *testing.T) {
 
 func TestHandleDeleteRuleClearsSeenFlowsForSourceRule(t *testing.T) {
 	env := newAPITestEnv(t)
-	env.seedNode(t, "node-a", false)
+	env.seedNode(t, "node-a", true)
 
 	rule := &pb.Rule{
 		Name:     "web-rule-delete",
@@ -612,7 +743,7 @@ func TestHandleDeleteRuleClearsSeenFlowsForSourceRule(t *testing.T) {
 
 func TestHandleDisableRuleClearsSeenFlowsForSourceRule(t *testing.T) {
 	env := newAPITestEnv(t)
-	env.seedNode(t, "node-a", false)
+	env.seedNode(t, "node-a", true)
 
 	rule := &pb.Rule{
 		Name:     "web-rule-disable",
@@ -658,5 +789,70 @@ func TestHandleDisableRuleClearsSeenFlowsForSourceRule(t *testing.T) {
 	}
 	if storedRule.Enabled {
 		t.Fatalf("expected rule to be marked disabled in the database, got %+v", storedRule)
+	}
+}
+
+func TestHandleManagedRulesRejectDirectMutations(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.seedNode(t, "node-a", false)
+
+	template, err := env.database.CreateRuleTemplate(&db.RuleTemplate{Name: "Managed Template"})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+	templateRule, err := env.database.CreateTemplateRule(&db.TemplateRule{
+		TemplateID:      template.ID,
+		Position:        1,
+		Name:            "Managed Curl",
+		Enabled:         true,
+		Action:          "allow",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    "/usr/bin/curl",
+	})
+	if err != nil {
+		t.Fatalf("create template rule: %v", err)
+	}
+
+	if err := env.database.UpsertRule(&db.DBRule{
+		Node:            "node-a",
+		Name:            ruleutil.ManagedRuleName(template.ID, templateRule.ID),
+		DisplayName:     templateRule.Name,
+		SourceKind:      db.RuleSourceManaged,
+		TemplateID:      template.ID,
+		TemplateRuleID:  templateRule.ID,
+		Enabled:         true,
+		Action:          "allow",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    "/usr/bin/curl",
+	}); err != nil {
+		t.Fatalf("seed managed rule: %v", err)
+	}
+
+	ruleName := ruleutil.ManagedRuleName(template.ID, templateRule.ID)
+	updateRec := performJSONRequestWithRuleName(t, env.api.handleUpdateRule, http.MethodPut, "/api/v1/rules/"+ruleName, ruleName, ruleRequest{
+		Node:            "node-a",
+		Enabled:         true,
+		Action:          "deny",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    "/usr/bin/curl",
+	})
+	if updateRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for managed rule update, got %d: %s", updateRec.Code, updateRec.Body.String())
+	}
+
+	deleteRec := performJSONRequestWithRuleName(t, env.api.handleDeleteRule, http.MethodDelete, "/api/v1/rules/"+ruleName+"?node=node-a", ruleName, nil)
+	if deleteRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for managed rule delete, got %d: %s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	toggleRec := performJSONRequestWithRuleName(t, env.api.handleToggleRule(false), http.MethodPost, "/api/v1/rules/"+ruleName+"/disable?node=node-a", ruleName, nil)
+	if toggleRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for managed rule toggle, got %d: %s", toggleRec.Code, toggleRec.Body.String())
 	}
 }

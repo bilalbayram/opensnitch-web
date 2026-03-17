@@ -15,30 +15,33 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/db"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/updater"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 )
 
 type API struct {
-	cfg      *config.Config
-	db       *db.Database
-	nodes    *nodemanager.Manager
-	hub      *ws.Hub
-	prompter *prompter.Prompter
-	fetcher  *blocklist.Fetcher
-	updater  *updater.Updater
-	upgrader websocket.Upgrader
+	cfg          *config.Config
+	db           *db.Database
+	nodes        *nodemanager.Manager
+	hub          *ws.Hub
+	prompter     *prompter.Prompter
+	templateSync *templatesync.Service
+	fetcher      *blocklist.Fetcher
+	updater      *updater.Updater
+	upgrader     websocket.Upgrader
 }
 
-func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, frontendFS fs.FS, upd *updater.Updater) http.Handler {
+func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service, frontendFS fs.FS, upd *updater.Updater) http.Handler {
 	api := &API{
-		cfg:      cfg,
-		db:       database,
-		nodes:    nodes,
-		hub:      hub,
-		prompter: p,
-		fetcher:  blocklist.NewFetcher(),
-		updater:  upd,
+		cfg:          cfg,
+		db:           database,
+		nodes:        nodes,
+		hub:          hub,
+		prompter:     p,
+		templateSync: templateSync,
+		fetcher:      blocklist.NewFetcher(),
+		updater:      upd,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -73,6 +76,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Get("/api/v1/nodes", api.handleGetNodes)
 		r.Get("/api/v1/nodes/{addr}", api.handleGetNode)
 		r.Put("/api/v1/nodes/{addr}/config", api.handleUpdateNodeConfig)
+		r.Put("/api/v1/nodes/{addr}/tags", api.handleReplaceNodeTags)
 		r.Post("/api/v1/nodes/{addr}/interception/enable", api.handleNodeAction(true, false))
 		r.Post("/api/v1/nodes/{addr}/interception/disable", api.handleNodeAction(false, false))
 		r.Put("/api/v1/nodes/{addr}/mode", api.handleSetNodeMode)
@@ -94,6 +98,19 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Delete("/api/v1/rules/{name}", api.handleDeleteRule)
 		r.Post("/api/v1/rules/{name}/enable", api.handleToggleRule(true))
 		r.Post("/api/v1/rules/{name}/disable", api.handleToggleRule(false))
+
+		// Templates
+		r.Get("/api/v1/templates", api.handleGetTemplates)
+		r.Post("/api/v1/templates", api.handleCreateTemplate)
+		r.Get("/api/v1/templates/{id}", api.handleGetTemplate)
+		r.Put("/api/v1/templates/{id}", api.handleUpdateTemplate)
+		r.Delete("/api/v1/templates/{id}", api.handleDeleteTemplate)
+		r.Post("/api/v1/templates/{id}/rules", api.handleCreateTemplateRule)
+		r.Put("/api/v1/templates/{id}/rules/{ruleId}", api.handleUpdateTemplateRule)
+		r.Delete("/api/v1/templates/{id}/rules/{ruleId}", api.handleDeleteTemplateRule)
+		r.Post("/api/v1/templates/{id}/attachments", api.handleCreateTemplateAttachment)
+		r.Put("/api/v1/templates/{id}/attachments/{attachmentId}", api.handleUpdateTemplateAttachment)
+		r.Delete("/api/v1/templates/{id}/attachments/{attachmentId}", api.handleDeleteTemplateAttachment)
 
 		// Connections
 		r.Get("/api/v1/connections", api.handleGetConnections)

@@ -12,6 +12,8 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/db"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
+	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 	pb "github.com/evilsocket/opensnitch-web/proto"
 )
@@ -41,7 +43,8 @@ func newServiceTestEnv(t *testing.T, promptTimeout int) *serviceTestEnv {
 		database: database,
 		prompter: prompter.New(promptTimeout),
 	}
-	env.service = NewUIService(nodemanager.NewManager(), database, ws.NewHub(), env.prompter)
+	nodes := nodemanager.NewManager()
+	env.service = NewUIService(nodes, database, ws.NewHub(), env.prompter, templatesync.New(database, nodes))
 
 	t.Cleanup(func() {
 		_ = database.Close()
@@ -232,6 +235,116 @@ func TestAskRuleReusesRememberedDecisionsForDenyAndReject(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSubscribeReplacesNodeRulesAndReconcilesManagedTemplates(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+	nodeAddr := "node-a"
+
+	template, err := env.database.CreateRuleTemplate(&db.RuleTemplate{Name: "Reconnect Template"})
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+	templateRule, err := env.database.CreateTemplateRule(&db.TemplateRule{
+		TemplateID:      template.ID,
+		Position:        1,
+		Name:            "Managed Curl",
+		Enabled:         true,
+		Action:          "allow",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    testProcessPath,
+	})
+	if err != nil {
+		t.Fatalf("create template rule: %v", err)
+	}
+	if _, err := env.database.CreateTemplateAttachment(&db.TemplateAttachment{
+		TemplateID: template.ID,
+		TargetType: "node",
+		TargetRef:  nodeAddr,
+		Priority:   100,
+	}); err != nil {
+		t.Fatalf("create template attachment: %v", err)
+	}
+
+	if err := env.database.UpsertRule(&db.DBRule{
+		Node:            nodeAddr,
+		Name:            "stale-rule",
+		DisplayName:     "stale-rule",
+		Enabled:         true,
+		Action:          "allow",
+		Duration:        "always",
+		OperatorType:    "simple",
+		OperatorOperand: "process.path",
+		OperatorData:    "/usr/bin/stale",
+	}); err != nil {
+		t.Fatalf("seed stale rule: %v", err)
+	}
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: serviceTestAddr(nodeAddr)})
+	manualRule := &pb.Rule{
+		Name:     "manual-live",
+		Enabled:  true,
+		Action:   "allow",
+		Duration: "always",
+		Operator: &pb.Operator{
+			Type:    "simple",
+			Operand: "process.path",
+			Data:    "/usr/bin/manual",
+		},
+	}
+
+	if _, err := env.service.Subscribe(ctx, &pb.ClientConfig{
+		Name:    "test-node",
+		Version: "1.0.0",
+		Rules:   []*pb.Rule{manualRule},
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	rules, err := env.database.GetRules(nodeAddr)
+	if err != nil {
+		t.Fatalf("get rules after subscribe: %v", err)
+	}
+
+	names := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		names = append(names, rule.Name)
+	}
+	if containsString(names, "stale-rule") {
+		t.Fatalf("expected stale rule to be removed, got %+v", names)
+	}
+	managedName := ruleutil.ManagedRuleName(template.ID, templateRule.ID)
+	if !containsString(names, "manual-live") || !containsString(names, managedName) {
+		t.Fatalf("expected manual and managed rules after subscribe, got %+v", names)
+	}
+
+	node := env.service.nodes.GetNode(nodeAddr)
+	if node == nil {
+		t.Fatal("expected node to be connected after subscribe")
+	}
+
+	select {
+	case notif := <-node.NotifyChan:
+		if notif.GetType() != pb.Action_CHANGE_RULE {
+			t.Fatalf("expected CHANGE_RULE notification, got %v", notif.GetType())
+		}
+		if len(notif.GetRules()) != 1 || notif.GetRules()[0].GetName() != managedName {
+			t.Fatalf("unexpected reconcile notification: %+v", notif.GetRules())
+		}
+	default:
+		t.Fatal("expected template reconcile notification after subscribe")
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAskRuleTimeoutDoesNotPersistSeenFlow(t *testing.T) {

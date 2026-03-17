@@ -12,6 +12,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
 	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
+	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 	pb "github.com/evilsocket/opensnitch-web/proto"
 	"google.golang.org/grpc/peer"
@@ -22,18 +23,20 @@ import (
 type UIService struct {
 	pb.UnimplementedUIServer
 
-	nodes    *nodemanager.Manager
-	db       *db.Database
-	hub      *ws.Hub
-	prompter *prompter.Prompter
+	nodes        *nodemanager.Manager
+	db           *db.Database
+	hub          *ws.Hub
+	prompter     *prompter.Prompter
+	templateSync *templatesync.Service
 }
 
-func NewUIService(nodes *nodemanager.Manager, database *db.Database, hub *ws.Hub, p *prompter.Prompter) *UIService {
+func NewUIService(nodes *nodemanager.Manager, database *db.Database, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service) *UIService {
 	return &UIService{
-		nodes:    nodes,
-		db:       database,
-		hub:      hub,
-		prompter: p,
+		nodes:        nodes,
+		db:           database,
+		hub:          hub,
+		prompter:     p,
+		templateSync: templateSync,
 	}
 }
 
@@ -72,14 +75,29 @@ func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb
 		DaemonRules:   int64(len(config.GetRules())),
 	})
 
-	// Store rules from daemon
+	// Replace the node rule snapshot with the daemon's current view.
+	snapshotRules := make([]*db.DBRule, 0, len(config.GetRules()))
+	observedAt := time.Now()
 	for _, r := range config.GetRules() {
-		dbRule, err := ruleutil.ProtoToDBRule(peerAddr, time.Now(), r)
+		dbRule, err := ruleutil.ProtoToDBRule(peerAddr, observedAt, r)
 		if err != nil {
 			log.Printf("[grpc] Failed to convert rule %q from %s: %v", r.GetName(), peerAddr, err)
 			continue
 		}
-		s.db.UpsertRule(dbRule)
+		if s.templateSync != nil {
+			if err := s.templateSync.DecorateStoredRule(dbRule); err != nil {
+				log.Printf("[grpc] Failed to decorate stored rule %q from %s: %v", r.GetName(), peerAddr, err)
+			}
+		}
+		snapshotRules = append(snapshotRules, dbRule)
+	}
+	if err := s.db.ReplaceNodeRulesSnapshot(peerAddr, snapshotRules); err != nil {
+		return nil, err
+	}
+	if s.templateSync != nil {
+		if err := s.templateSync.ReconcileNode(peerAddr); err != nil {
+			log.Printf("[grpc] Failed to reconcile templates for %s: %v", peerAddr, err)
+		}
 	}
 
 	s.hub.BroadcastEvent(ws.EventNodeConnected, map[string]interface{}{

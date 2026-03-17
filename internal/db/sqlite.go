@@ -112,6 +112,10 @@ func (d *Database) migrate() error {
 		time TEXT NOT NULL DEFAULT '',
 		node TEXT NOT NULL DEFAULT '',
 		name TEXT NOT NULL DEFAULT '',
+		display_name TEXT NOT NULL DEFAULT '',
+		source_kind TEXT NOT NULL DEFAULT 'manual',
+		template_id INTEGER NOT NULL DEFAULT 0,
+		template_rule_id INTEGER NOT NULL DEFAULT 0,
 		enabled INTEGER NOT NULL DEFAULT 1,
 		precedence INTEGER NOT NULL DEFAULT 0,
 		action TEXT NOT NULL DEFAULT '',
@@ -128,6 +132,64 @@ func (d *Database) migrate() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_rules_time ON rules(time);
+	CREATE INDEX IF NOT EXISTS idx_rules_node_source ON rules(node, source_kind);
+	CREATE INDEX IF NOT EXISTS idx_rules_template_ref ON rules(template_id, template_rule_id);
+
+	CREATE TABLE IF NOT EXISTS rule_templates (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(name)
+	);
+
+	CREATE TABLE IF NOT EXISTS template_rules (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		template_id INTEGER NOT NULL,
+		position INTEGER NOT NULL DEFAULT 0,
+		name TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		precedence INTEGER NOT NULL DEFAULT 0,
+		action TEXT NOT NULL DEFAULT '',
+		duration TEXT NOT NULL DEFAULT '',
+		operator_type TEXT NOT NULL DEFAULT '',
+		operator_sensitive INTEGER NOT NULL DEFAULT 0,
+		operator_operand TEXT NOT NULL DEFAULT '',
+		operator_data TEXT NOT NULL DEFAULT '',
+		operator_json TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		nolog INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS idx_template_rules_template ON template_rules(template_id, position, id);
+
+	CREATE TABLE IF NOT EXISTS template_attachments (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		template_id INTEGER NOT NULL,
+		target_type TEXT NOT NULL DEFAULT '',
+		target_ref TEXT NOT NULL DEFAULT '',
+		priority INTEGER NOT NULL DEFAULT 100,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(template_id, target_type, target_ref)
+	);
+	CREATE INDEX IF NOT EXISTS idx_template_attachments_target ON template_attachments(target_type, target_ref);
+
+	CREATE TABLE IF NOT EXISTS node_tags (
+		node TEXT NOT NULL,
+		tag TEXT NOT NULL,
+		UNIQUE(node, tag)
+	);
+	CREATE INDEX IF NOT EXISTS idx_node_tags_tag ON node_tags(tag);
+
+	CREATE TABLE IF NOT EXISTS node_template_sync (
+		node TEXT PRIMARY KEY,
+		pending INTEGER NOT NULL DEFAULT 0,
+		error TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
 
 	CREATE TABLE IF NOT EXISTS alerts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,6 +329,10 @@ func (d *Database) migrate() error {
 	// Add mode column to nodes (safe: ignores error if already exists)
 	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
 	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN template_id INTEGER NOT NULL DEFAULT 0")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN template_rule_id INTEGER NOT NULL DEFAULT 0")
 	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''")
 	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''")
 
