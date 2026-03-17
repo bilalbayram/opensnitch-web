@@ -147,6 +147,11 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 				Rule:        ruleName,
 			})
 
+			// Record domain-to-IP mapping for non-DNS connections
+			if conn.DstHost != "" && conn.DstIp != "" && conn.DstPort != 53 {
+				s.db.UpsertDNSDomain(peerAddr, conn.DstHost, conn.DstIp, normalizeEventTime(evt.Time, evt.Unixnano))
+			}
+
 			s.hub.BroadcastEvent(ws.EventConnectionEvent, map[string]interface{}{
 				"time":         evt.Time,
 				"node":         peerAddr,

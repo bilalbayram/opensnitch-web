@@ -12,6 +12,7 @@ import FirewallPage from '@/pages/firewall';
 import AlertsPage from '@/pages/alerts';
 import BlocklistsPage from '@/pages/blocklists';
 import SettingsPage from '@/pages/settings';
+import DNSPage from '@/pages/dns';
 
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/connections" element={<ConnectionsPage />} />
             <Route path="/seen-flows" element={<SeenFlowsPage />} />
+            <Route path="/dns" element={<DNSPage />} />
             <Route path="/rules" element={<RulesPage />} />
             <Route path="/blocklists" element={<BlocklistsPage />} />
             <Route path="/nodes" element={<NodesPage />} />

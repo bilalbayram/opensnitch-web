@@ -243,6 +243,20 @@ func (d *Database) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_seen_flows_last_seen ON seen_flows(last_seen);
 	CREATE INDEX IF NOT EXISTS idx_seen_flows_node_action ON seen_flows(node, action);
 	CREATE INDEX IF NOT EXISTS idx_seen_flows_source_rule ON seen_flows(node, source_rule_name);
+
+	CREATE TABLE IF NOT EXISTS dns_domains (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		node TEXT NOT NULL DEFAULT '',
+		domain TEXT NOT NULL DEFAULT '',
+		ip TEXT NOT NULL DEFAULT '',
+		first_seen TEXT NOT NULL DEFAULT '',
+		last_seen TEXT NOT NULL DEFAULT '',
+		hit_count INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(node, domain, ip)
+	);
+	CREATE INDEX IF NOT EXISTS idx_dns_domains_domain ON dns_domains(domain);
+	CREATE INDEX IF NOT EXISTS idx_dns_domains_ip ON dns_domains(ip);
+	CREATE INDEX IF NOT EXISTS idx_dns_domains_node ON dns_domains(node);
 	`
 
 	_, err := d.db.Exec(schema)

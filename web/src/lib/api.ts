@@ -148,6 +148,22 @@ export const api = {
   deleteProcessTrust: (addr: string, id: number) =>
     request(`/nodes/${encodeURIComponent(addr)}/trust/${id}`, { method: 'DELETE' }),
 
+  // DNS
+  getDNSDomains: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<{ data: any[]; total: number }>(`/dns/domains${qs}`);
+  },
+  purgeDNSDomains: () => request('/dns/domains', { method: 'DELETE' }),
+  getDNSServers: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<{ data: any[]; total: number }>(`/dns/servers${qs}`);
+  },
+  createDNSServerRules: (payload: { node: string; allowed_ips: string[]; description?: string }) =>
+    request<{ status: string; data: any[]; count: number }>('/dns/server-rules', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   // Blocklists
   getBlocklists: () => request<any[]>('/blocklists'),
   createBlocklist: (name: string, url: string, category: string) =>
