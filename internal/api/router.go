@@ -100,6 +100,12 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Delete("/api/v1/connections", api.handlePurgeConnections)
 		r.Get("/api/v1/seen-flows", api.handleGetSeenFlows)
 
+		// DNS
+		r.Get("/api/v1/dns/domains", api.handleGetDNSDomains)
+		r.Delete("/api/v1/dns/domains", api.handlePurgeDNSDomains)
+		r.Get("/api/v1/dns/servers", api.handleGetDNSServers)
+		r.Post("/api/v1/dns/server-rules", api.handleCreateDNSServerRules)
+
 		// Stats
 		r.Get("/api/v1/stats", api.handleGetGeneralStats)
 		r.Get("/api/v1/stats/{table}", api.handleGetStats)
