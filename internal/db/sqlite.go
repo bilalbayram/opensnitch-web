@@ -223,6 +223,26 @@ func (d *Database) migrate() error {
 		UNIQUE(node, process_path)
 	);
 	CREATE INDEX IF NOT EXISTS idx_process_trust_lookup ON process_trust(node, process_path);
+
+	CREATE TABLE IF NOT EXISTS seen_flows (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		node TEXT NOT NULL DEFAULT '',
+		process TEXT NOT NULL DEFAULT '',
+		protocol TEXT NOT NULL DEFAULT '',
+		dst_port INTEGER NOT NULL DEFAULT 0,
+		destination_operand TEXT NOT NULL DEFAULT '',
+		destination TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		source_rule_name TEXT NOT NULL DEFAULT '',
+		first_seen TEXT NOT NULL DEFAULT '',
+		last_seen TEXT NOT NULL DEFAULT '',
+		expires_at TEXT NOT NULL DEFAULT '',
+		count INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(node, process, protocol, dst_port, destination_operand, destination)
+	);
+	CREATE INDEX IF NOT EXISTS idx_seen_flows_last_seen ON seen_flows(last_seen);
+	CREATE INDEX IF NOT EXISTS idx_seen_flows_node_action ON seen_flows(node, action);
+	CREATE INDEX IF NOT EXISTS idx_seen_flows_source_rule ON seen_flows(node, source_rule_name);
 	`
 
 	_, err := d.db.Exec(schema)
@@ -233,6 +253,8 @@ func (d *Database) migrate() error {
 	// Add mode column to nodes (safe: ignores error if already exists)
 	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
 	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''")
 
 	// Pre-seed default blocklists (disabled by default)
 	defaultBlocklists := []struct {

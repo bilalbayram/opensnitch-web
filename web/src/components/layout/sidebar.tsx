@@ -19,6 +19,7 @@ import { useAppStore } from '@/stores/app-store';
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/connections', icon: Network, label: 'Connections' },
+  { to: '/seen-flows', icon: Network, label: 'Seen Flows' },
   { to: '/rules', icon: Shield, label: 'Rules' },
   { to: '/blocklists', icon: ShieldBan, label: 'Blocklists' },
   { to: '/nodes', icon: Server, label: 'Nodes' },

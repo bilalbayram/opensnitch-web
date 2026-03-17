@@ -566,3 +566,97 @@ func TestHandleUpdateRuleRejectsCompoundRules(t *testing.T) {
 		t.Fatalf("expected 409 for compound update, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleDeleteRuleClearsSeenFlowsForSourceRule(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.seedNode(t, "node-a", false)
+
+	rule := &pb.Rule{
+		Name:     "web-rule-delete",
+		Action:   "allow",
+		Duration: "always",
+		Enabled:  true,
+		Operator: &pb.Operator{
+			Type:    "simple",
+			Operand: "process.path",
+			Data:    "/opt/opensnitch/test-app",
+		},
+	}
+	env.insertRule(t, "node-a", rule)
+
+	key := db.SeenFlowKey{
+		Node:               "node-a",
+		Process:            "/opt/opensnitch/test-app",
+		Protocol:           "tcp",
+		DstPort:            443,
+		DestinationOperand: "dest.host",
+		Destination:        "example.com",
+	}
+	if err := env.database.UpsertSeenFlow(key, "allow", rule.GetName(), time.Date(2026, 3, 16, 10, 0, 0, 0, time.Local), time.Time{}); err != nil {
+		t.Fatalf("seed seen flow: %v", err)
+	}
+
+	rec := performJSONRequestWithRuleName(t, env.api.handleDeleteRule, http.MethodDelete, "/api/v1/rules/"+rule.GetName()+"?node=node-a", rule.GetName(), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for delete, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	flow, err := env.database.GetSeenFlow(key)
+	if err != nil {
+		t.Fatalf("get seen flow after delete: %v", err)
+	}
+	if flow != nil {
+		t.Fatalf("expected delete to clear seen flow, got %+v", flow)
+	}
+}
+
+func TestHandleDisableRuleClearsSeenFlowsForSourceRule(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.seedNode(t, "node-a", false)
+
+	rule := &pb.Rule{
+		Name:     "web-rule-disable",
+		Action:   "allow",
+		Duration: "always",
+		Enabled:  true,
+		Operator: &pb.Operator{
+			Type:    "simple",
+			Operand: "process.path",
+			Data:    "/opt/opensnitch/test-app",
+		},
+	}
+	env.insertRule(t, "node-a", rule)
+
+	key := db.SeenFlowKey{
+		Node:               "node-a",
+		Process:            "/opt/opensnitch/test-app",
+		Protocol:           "tcp",
+		DstPort:            443,
+		DestinationOperand: "dest.host",
+		Destination:        "example.com",
+	}
+	if err := env.database.UpsertSeenFlow(key, "allow", rule.GetName(), time.Date(2026, 3, 16, 10, 0, 0, 0, time.Local), time.Time{}); err != nil {
+		t.Fatalf("seed seen flow: %v", err)
+	}
+
+	rec := performJSONRequestWithRuleName(t, env.api.handleToggleRule(false), http.MethodPost, "/api/v1/rules/"+rule.GetName()+"/disable?node=node-a", rule.GetName(), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for disable, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	flow, err := env.database.GetSeenFlow(key)
+	if err != nil {
+		t.Fatalf("get seen flow after disable: %v", err)
+	}
+	if flow != nil {
+		t.Fatalf("expected disable to clear seen flow, got %+v", flow)
+	}
+
+	storedRule, err := env.database.GetRule("node-a", rule.GetName())
+	if err != nil {
+		t.Fatalf("get rule after disable: %v", err)
+	}
+	if storedRule.Enabled {
+		t.Fatalf("expected rule to be marked disabled in the database, got %+v", storedRule)
+	}
+}

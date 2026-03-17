@@ -213,6 +213,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	peerAddr := peerAddrFromCtx(ctx)
 	log.Printf("[grpc] AskRule from %s: %s -> %s:%d (%s)",
 		peerAddr, conn.ProcessPath, conn.DstHost, conn.DstPort, conn.Protocol)
+	seenFlowKey, learningKey, trackSeenFlow := buildSeenFlowKey(peerAddr, conn)
 
 	// 1. Check blocklist — auto-deny blocked domains (even in silent_allow mode)
 	if conn.DstHost != "" && s.db.IsDomainBlocked(conn.DstHost) {
@@ -246,11 +247,12 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		}, nil
 	case "untrusted":
 		log.Printf("[grpc] AskRule: process %s untrusted, forcing prompt", conn.ProcessPath)
-		rule, err := s.prompter.AskUser(peerAddr, conn)
+		result, err := s.prompter.AskUser(peerAddr, conn)
 		if err != nil {
 			return nil, err
 		}
-		return rule, nil
+		s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
+		return result.Rule, nil
 	}
 
 	// 3. Check node mode — auto-allow or auto-deny without prompting
@@ -283,12 +285,88 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	}
 
 	// 4. "ask" mode — fall through to user prompt
-	rule, err := s.prompter.AskUser(peerAddr, conn)
+	if trackSeenFlow {
+		now := time.Now()
+		flow, err := s.db.GetSeenFlow(seenFlowKey)
+		if err != nil {
+			log.Printf("[grpc] AskRule: seen flow lookup failed for %s: %v", peerAddr, err)
+		} else if flow != nil {
+			if flow.IsExpired(now) {
+				if err := s.db.DeleteSeenFlow(seenFlowKey); err != nil {
+					log.Printf("[grpc] AskRule: failed to delete expired seen flow for %s: %v", peerAddr, err)
+				}
+			} else {
+				expiresAt, _ := flow.ExpiryTime()
+				log.Printf("[grpc] AskRule: reusing remembered %s decision for %s -> %s:%d (%s)",
+					flow.Action, conn.ProcessPath, flow.Destination, flow.DstPort, flow.Protocol)
+				if err := s.db.UpsertSeenFlow(seenFlowKey, flow.Action, flow.SourceRuleName, now, expiresAt); err != nil {
+					log.Printf("[grpc] AskRule: failed to refresh seen flow for %s: %v", peerAddr, err)
+				}
+				return ruleutil.BuildSeenFlowRule(learningKey, flow.Action), nil
+			}
+		}
+	}
+
+	result, err := s.prompter.AskUser(peerAddr, conn)
 	if err != nil {
 		return nil, err
 	}
+	s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
 
-	return rule, nil
+	return result.Rule, nil
+}
+
+func buildSeenFlowKey(node string, conn *pb.Connection) (db.SeenFlowKey, ruleutil.LearningKey, bool) {
+	learningKey, ok := ruleutil.LearningKeyFromConnection(conn)
+	if !ok {
+		return db.SeenFlowKey{}, ruleutil.LearningKey{}, false
+	}
+
+	return db.SeenFlowKey{
+		Node:               node,
+		Process:            learningKey.Process,
+		Protocol:           learningKey.Protocol,
+		DstPort:            learningKey.DstPort,
+		DestinationOperand: learningKey.DestinationType,
+		Destination:        learningKey.Destination,
+	}, learningKey, true
+}
+
+func (s *UIService) persistPromptDecision(key db.SeenFlowKey, result *prompter.AskResult, trackSeenFlow bool) {
+	if !trackSeenFlow || result == nil || result.Rule == nil || result.Source != prompter.DecisionSourceUserReply {
+		return
+	}
+
+	now := time.Now()
+	expiresAt, persist := seenFlowRetention(result.Rule, now)
+	if !persist {
+		return
+	}
+
+	if err := s.db.UpsertSeenFlow(key, result.Rule.GetAction(), strings.TrimSpace(result.Rule.GetName()), now, expiresAt); err != nil {
+		log.Printf("[grpc] AskRule: failed to persist seen flow for %s: %v", key.Node, err)
+	}
+}
+
+func seenFlowRetention(rule *pb.Rule, now time.Time) (time.Time, bool) {
+	if rule == nil {
+		return time.Time{}, false
+	}
+
+	switch strings.ToLower(strings.TrimSpace(rule.GetDuration())) {
+	case "always":
+		return time.Time{}, true
+	case "5m":
+		return now.Add(5 * time.Minute), true
+	case "15m":
+		return now.Add(15 * time.Minute), true
+	case "30m":
+		return now.Add(30 * time.Minute), true
+	case "1h":
+		return now.Add(time.Hour), true
+	default:
+		return time.Time{}, false
+	}
 }
 
 // Notifications is the bidirectional streaming RPC.
