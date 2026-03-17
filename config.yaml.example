@@ -21,3 +21,7 @@ update:
   enabled: true
   check_interval: "6h"
   github_repo: "evilsocket/opensnitch-web"
+
+geoip:
+  enabled: true
+  provider: "ip-api"
