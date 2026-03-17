@@ -17,6 +17,8 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/updater"
+	"github.com/evilsocket/opensnitch-web/internal/version"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 )
 
@@ -84,8 +86,23 @@ func main() {
 		})
 	}
 
+	// Print version
+	log.Printf("OpenSnitch Web UI %s (built %s)", version.Version, version.BuildTime)
+
+	// Signal channel (created early so updater can trigger graceful restart)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	// Start WebSocket hub
 	go hub.Run()
+
+	// Create updater
+	upd := updater.New(&cfg.Update, hub, func() {
+		sigChan <- syscall.SIGTERM
+	})
+	updCtx, updCancel := context.WithCancel(context.Background())
+	defer updCancel()
+	go upd.StartPeriodicCheck(updCtx)
 
 	// Create gRPC server
 	uiService := grpcserver.NewUIService(nodes, database, hub, p)
@@ -123,7 +140,7 @@ func main() {
 	}
 
 	// Create HTTP server
-	router := api.NewRouter(cfg, database, nodes, hub, p, frontendFS)
+	router := api.NewRouter(cfg, database, nodes, hub, p, frontendFS, upd)
 	httpSrv := &http.Server{Addr: cfg.Server.HTTPAddr, Handler: router}
 
 	go func() {
@@ -142,11 +159,10 @@ func main() {
 	log.Println("  Login: admin / opensnitch")
 
 	// Wait for shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
 	log.Println("Shutting down...")
+	updCancel()
 	httpSrv.Shutdown(context.Background())
 	grpcSrv.Stop()
 }

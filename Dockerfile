@@ -14,7 +14,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/web/dist ./web/dist
-RUN CGO_ENABLED=1 go build -o /opensnitch-web ./cmd/opensnitch-web
+ARG VERSION=dev
+RUN CGO_ENABLED=1 go build -ldflags "-X github.com/evilsocket/opensnitch-web/internal/version.Version=${VERSION} -X github.com/evilsocket/opensnitch-web/internal/version.BuildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o /opensnitch-web ./cmd/opensnitch-web
 
 # Runtime
 FROM alpine:3.19

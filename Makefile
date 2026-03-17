@@ -1,5 +1,9 @@
 .PHONY: all build proto frontend clean run dev embed
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+LDFLAGS := -X github.com/evilsocket/opensnitch-web/internal/version.Version=$(VERSION) -X github.com/evilsocket/opensnitch-web/internal/version.BuildTime=$(BUILD_TIME)
+
 all: frontend embed build
 
 # Generate proto files
@@ -19,11 +23,11 @@ embed: frontend
 
 # Build Go binary (with embedded frontend)
 build: embed
-	CGO_ENABLED=1 go build -o bin/opensnitch-web ./cmd/opensnitch-web
+	CGO_ENABLED=1 go build -ldflags '$(LDFLAGS)' -o bin/opensnitch-web ./cmd/opensnitch-web
 
 # Run the server (dev mode — serves from web/dist)
 run:
-	CGO_ENABLED=1 go run ./cmd/opensnitch-web
+	CGO_ENABLED=1 go run -ldflags '$(LDFLAGS)' ./cmd/opensnitch-web
 
 # Development: run backend + frontend dev server
 dev:

@@ -8,6 +8,7 @@ import {
   BarChart3,
   Flame,
   Bell,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/app-store';
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/stats/hosts', icon: BarChart3, label: 'Stats', matchPrefix: '/stats' },
   { to: '/firewall', icon: Flame, label: 'Firewall' },
   { to: '/alerts', icon: Bell, label: 'Alerts' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export function Sidebar() {

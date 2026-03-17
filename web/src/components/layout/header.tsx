@@ -1,11 +1,11 @@
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/lib/utils';
-import { Wifi, WifiOff, LogOut, Shield } from 'lucide-react';
+import { Wifi, WifiOff, LogOut, Shield, ArrowUpCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, NavLink } from 'react-router-dom';
 
 export function Header() {
-  const { user, wsConnected, setUser } = useAppStore();
+  const { user, wsConnected, setUser, updateAvailable, latestVersion } = useAppStore();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -35,6 +35,15 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        {updateAvailable && (
+          <NavLink
+            to="/settings"
+            className="flex items-center gap-1.5 text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors"
+          >
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{latestVersion}</span>
+          </NavLink>
+        )}
         <span className="text-xs text-muted-foreground hidden sm:inline">{user}</span>
         <button
           onClick={handleLogout}

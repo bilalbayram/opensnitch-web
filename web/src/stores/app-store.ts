@@ -63,6 +63,8 @@ interface AppState {
   prompts: Prompt[];
   recentConnections: ConnectionEvent[];
   nodesOnline: Set<string>;
+  updateAvailable: boolean;
+  latestVersion: string | null;
 
   setUser: (user: string | null, token: string | null) => void;
   setWSConnected: (connected: boolean) => void;
@@ -72,6 +74,7 @@ interface AppState {
   addConnection: (conn: ConnectionEvent) => void;
   addNodeOnline: (addr: string) => void;
   removeNodeOnline: (addr: string) => void;
+  setUpdateAvailable: (available: boolean, version: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -82,6 +85,8 @@ export const useAppStore = create<AppState>((set) => ({
   prompts: [],
   recentConnections: [],
   nodesOnline: new Set(),
+  updateAvailable: false,
+  latestVersion: null,
 
   setUser: (user, token) => {
     if (token) {
@@ -127,4 +132,7 @@ export const useAppStore = create<AppState>((set) => ({
       s.delete(addr);
       return { nodesOnline: s };
     }),
+
+  setUpdateAvailable: (available, version) =>
+    set({ updateAvailable: available, latestVersion: version }),
 }));

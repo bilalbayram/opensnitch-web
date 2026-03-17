@@ -8,8 +8,9 @@ const (
 	EventPromptTimeout   = "prompt_timeout"
 	EventNodeConnected   = "node_connected"
 	EventNodeDisconnected = "node_disconnected"
-	EventNewAlert        = "new_alert"
-	EventRuleChanged     = "rule_changed"
+	EventNewAlert         = "new_alert"
+	EventRuleChanged      = "rule_changed"
+	EventUpdateAvailable  = "update_available"
 )
 
 // Event types sent from browser to server

@@ -16,3 +16,8 @@ auth:
 ui:
   default_action: "deny"
   prompt_timeout: 120
+
+update:
+  enabled: true
+  check_interval: "6h"
+  github_repo: "evilsocket/opensnitch-web"

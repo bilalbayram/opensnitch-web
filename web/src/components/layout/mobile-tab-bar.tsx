@@ -10,6 +10,7 @@ import {
   BarChart3,
   Flame,
   ShieldBan,
+  Settings,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ const moreTabs = [
   { to: '/stats/hosts', icon: BarChart3, label: 'Statistics' },
   { to: '/firewall', icon: Flame, label: 'Firewall' },
   { to: '/blocklists', icon: ShieldBan, label: 'Blocklists' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export function MobileTabBar() {
