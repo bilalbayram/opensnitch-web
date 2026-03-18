@@ -54,16 +54,16 @@ const nodes = [
 ];
 
 const connections = [
-  { id: 1001, time: '2026-03-17T11:42:00Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 52341, dst_host: 'api.github.com', dst_ip: '140.82.121.6', dst_port: 443, user_id: 1000, process: '/usr/bin/git', process_args: 'git fetch origin', process_id: 4821, rule: 'allow-git-https', action: 'allow' },
-  { id: 1002, time: '2026-03-17T11:41:58Z', node: '10.0.1.20:50051', protocol: 'tcp', src_ip: '10.0.1.20', src_port: 48210, dst_host: 'registry.npmjs.org', dst_ip: '104.16.23.35', dst_port: 443, user_id: 1000, process: '/usr/bin/node', process_args: 'npm install', process_id: 5123, rule: 'allow-npm', action: 'allow' },
-  { id: 1003, time: '2026-03-17T11:41:55Z', node: '10.0.1.10:50051', protocol: 'udp', src_ip: '10.0.1.10', src_port: 0, dst_host: 'telemetry.ubuntu.com', dst_ip: '91.189.92.150', dst_port: 443, user_id: 0, process: '/usr/lib/ubuntu-advantage/ua-auto-attach', process_args: '', process_id: 892, rule: 'deny-telemetry', action: 'deny' },
-  { id: 1004, time: '2026-03-17T11:41:50Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 39102, dst_host: 'updates.signal.org', dst_ip: '76.223.92.165', dst_port: 443, user_id: 1000, process: '/opt/Signal/signal-desktop', process_args: '', process_id: 3421, rule: 'allow-signal', action: 'allow' },
-  { id: 1005, time: '2026-03-17T11:41:45Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 41023, dst_host: 'dl.google.com', dst_ip: '142.250.185.238', dst_port: 443, user_id: 0, process: '/usr/bin/google-chrome', process_args: '', process_id: 2910, rule: 'allow-chrome', action: 'allow' },
-  { id: 1006, time: '2026-03-17T11:41:40Z', node: '10.0.1.20:50051', protocol: 'tcp', src_ip: '10.0.1.20', src_port: 55012, dst_host: 'tracking.analytics.yahoo.com', dst_ip: '98.136.144.130', dst_port: 443, user_id: 1000, process: '/usr/lib/firefox/firefox', process_args: '', process_id: 6721, rule: 'deny-tracking', action: 'deny' },
-  { id: 1007, time: '2026-03-17T11:41:35Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 33210, dst_host: 'apt.postgresql.org', dst_ip: '87.238.57.227', dst_port: 443, user_id: 0, process: '/usr/bin/apt', process_args: 'apt update', process_id: 1102, rule: 'allow-apt', action: 'allow' },
-  { id: 1008, time: '2026-03-17T11:41:30Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 60123, dst_host: 'slack-msgs.com', dst_ip: '54.192.18.239', dst_port: 443, user_id: 1000, process: '/usr/lib/slack/slack', process_args: '', process_id: 7812, rule: 'allow-slack', action: 'allow' },
-  { id: 1009, time: '2026-03-17T11:41:25Z', node: '10.0.1.20:50051', protocol: 'udp', src_ip: '10.0.1.20', src_port: 0, dst_host: 'metrics.ubuntu.com', dst_ip: '91.189.92.152', dst_port: 443, user_id: 0, process: '/usr/lib/snapd/snapd', process_args: '', process_id: 502, rule: 'deny-telemetry', action: 'deny' },
-  { id: 1010, time: '2026-03-17T11:41:20Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 44102, dst_host: 'docker.io', dst_ip: '54.198.211.15', dst_port: 443, user_id: 0, process: '/usr/bin/dockerd', process_args: '', process_id: 1, rule: 'allow-docker', action: 'allow' },
+  { id: 1001, time: '2026-03-17T11:42:00Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 52341, dst_host: 'api.github.com', dst_ip: '140.82.121.6', dst_port: 443, uid: 1000, pid: 4821, process: '/usr/bin/git', process_args: 'git fetch origin', process_cwd: '/home/bayram/projects', rule: 'allow-git-https', action: 'allow' },
+  { id: 1002, time: '2026-03-17T11:41:58Z', node: '10.0.1.20:50051', protocol: 'tcp', src_ip: '10.0.1.20', src_port: 48210, dst_host: 'registry.npmjs.org', dst_ip: '104.16.23.35', dst_port: 443, uid: 1000, pid: 5123, process: '/usr/bin/node', process_args: 'npm install', process_cwd: '/srv/app', rule: 'allow-npm', action: 'allow' },
+  { id: 1003, time: '2026-03-17T11:41:55Z', node: '10.0.1.10:50051', protocol: 'udp', src_ip: '10.0.1.10', src_port: 0, dst_host: 'telemetry.ubuntu.com', dst_ip: '91.189.92.150', dst_port: 443, uid: 0, pid: 892, process: '/usr/lib/ubuntu-advantage/ua-auto-attach', process_args: '', process_cwd: '/', rule: 'deny-telemetry', action: 'deny' },
+  { id: 1004, time: '2026-03-17T11:41:50Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 39102, dst_host: 'updates.signal.org', dst_ip: '76.223.92.165', dst_port: 443, uid: 1000, pid: 3421, process: '/opt/Signal/signal-desktop', process_args: '', process_cwd: '/home/bayram', rule: 'allow-signal', action: 'allow' },
+  { id: 1005, time: '2026-03-17T11:41:45Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 41023, dst_host: 'dl.google.com', dst_ip: '142.250.185.238', dst_port: 443, uid: 0, pid: 2910, process: '/usr/bin/google-chrome', process_args: '', process_cwd: '/home/bayram', rule: 'allow-chrome', action: 'allow' },
+  { id: 1006, time: '2026-03-17T11:41:40Z', node: '10.0.1.20:50051', protocol: 'tcp', src_ip: '10.0.1.20', src_port: 55012, dst_host: 'tracking.analytics.yahoo.com', dst_ip: '98.136.144.130', dst_port: 443, uid: 1000, pid: 6721, process: '/usr/lib/firefox/firefox', process_args: '', process_cwd: '/home/bayram', rule: 'deny-tracking', action: 'deny' },
+  { id: 1007, time: '2026-03-17T11:41:35Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 33210, dst_host: 'apt.postgresql.org', dst_ip: '87.238.57.227', dst_port: 443, uid: 0, pid: 1102, process: '/usr/bin/apt', process_args: 'apt update', process_cwd: '/', rule: 'allow-apt', action: 'allow' },
+  { id: 1008, time: '2026-03-17T11:41:30Z', node: '10.0.1.10:50051', protocol: 'tcp', src_ip: '10.0.1.10', src_port: 60123, dst_host: 'slack-msgs.com', dst_ip: '54.192.18.239', dst_port: 443, uid: 1000, pid: 7812, process: '/usr/lib/slack/slack', process_args: '', process_cwd: '/home/bayram', rule: 'allow-slack', action: 'allow' },
+  { id: 1009, time: '2026-03-17T11:41:25Z', node: '10.0.1.20:50051', protocol: 'udp', src_ip: '10.0.1.20', src_port: 0, dst_host: 'metrics.ubuntu.com', dst_ip: '91.189.92.152', dst_port: 443, uid: 0, pid: 502, process: '/usr/lib/snapd/snapd', process_args: '', process_cwd: '/', rule: 'deny-telemetry', action: 'deny' },
+  { id: 1010, time: '2026-03-17T11:41:20Z', node: '10.0.1.30:50051', protocol: 'tcp', src_ip: '10.0.1.30', src_port: 44102, dst_host: 'docker.io', dst_ip: '54.198.211.15', dst_port: 443, uid: 0, pid: 1, process: '/usr/bin/dockerd', process_args: '', process_cwd: '/', rule: 'allow-docker', action: 'allow' },
 ];
 
 const rules = [
@@ -100,11 +100,11 @@ const statsHosts = [
 ];
 
 const alerts = [
-  { id: 1, time: '2026-03-17T10:30:00Z', type: 0, priority: 1, title: 'Node disconnected', message: 'Node db-server-03 (10.0.1.30:50051) lost gRPC connection', node: '10.0.1.30:50051' },
-  { id: 2, time: '2026-03-17T09:15:00Z', type: 1, priority: 2, title: 'High deny rate', message: '312 connections denied in the last hour on gateway-01', node: '10.0.1.10:50051' },
-  { id: 3, time: '2026-03-17T08:00:00Z', type: 2, priority: 3, title: 'Template synced', message: 'Template "Productivity Apps" synced to 2 nodes', node: '' },
-  { id: 4, time: '2026-03-16T22:45:00Z', type: 1, priority: 2, title: 'Unknown process', message: 'Process /tmp/.hidden-bin attempted outbound connection to 185.143.223.1:4444', node: '10.0.1.20:50051' },
-  { id: 5, time: '2026-03-16T18:30:00Z', type: 2, priority: 3, title: 'Blocklist updated', message: 'Blocklist "StevenBlack Hosts" synced — 84,210 domains', node: '' },
+  { id: 1, time: '2026-03-17T10:30:00Z', type: 0, priority: 1, body: 'Node db-server-03 (10.0.1.30:50051) lost gRPC connection', node: '10.0.1.30:50051' },
+  { id: 2, time: '2026-03-17T09:15:00Z', type: 1, priority: 2, body: '312 connections denied in the last hour on gateway-01', node: '10.0.1.10:50051' },
+  { id: 3, time: '2026-03-17T08:00:00Z', type: 2, priority: 2, body: 'Template "Productivity Apps" synced to 2 nodes', node: '' },
+  { id: 4, time: '2026-03-16T22:45:00Z', type: 1, priority: 2, body: 'Process /tmp/.hidden-bin attempted outbound connection to 185.143.223.1:4444', node: '10.0.1.20:50051' },
+  { id: 5, time: '2026-03-16T18:30:00Z', type: 2, priority: 2, body: 'Blocklist "StevenBlack Hosts" synced - 84,210 domains', node: '' },
 ];
 
 const dnsDomains = [
@@ -175,10 +175,6 @@ const firewall = [
 const version = {
   current_version: 'v0.5.0',
   build_time: '2026-03-15T10:00:00Z',
-  latest_version: 'v0.5.0',
-  update_available: false,
-  last_check: '2026-03-17T06:00:00Z',
-  release: null,
 };
 
 export async function setupMocks(page: Page) {

@@ -1,13 +1,13 @@
-type WSHandler = (event: WSEvent) => void;
+type WSHandler<T = unknown> = (event: WSEvent<T>) => void;
 
-export interface WSEvent {
+export interface WSEvent<T = unknown> {
   type: string;
-  payload: any;
+  payload: T;
 }
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
-  private handlers: Map<string, Set<WSHandler>> = new Map();
+  private handlers: Map<string, Set<WSHandler<unknown>>> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private url: string;
 
@@ -71,22 +71,24 @@ class WebSocketClient {
     }, 3000);
   }
 
-  on(event: string, handler: WSHandler) {
+  on<T = unknown>(event: string, handler: WSHandler<T>) {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
-    this.handlers.get(event)!.add(handler);
-    return () => this.handlers.get(event)?.delete(handler);
+    this.handlers.get(event)!.add(handler as WSHandler<unknown>);
+    return () => {
+      this.handlers.get(event)?.delete(handler as WSHandler<unknown>);
+    };
   }
 
-  private emit(event: string, data: WSEvent) {
+  private emit(event: string, data: WSEvent<unknown>) {
     // Call specific handlers
     this.handlers.get(event)?.forEach((h) => h(data));
     // Call wildcard handlers
     this.handlers.get('*')?.forEach((h) => h(data));
   }
 
-  send(type: string, payload: any) {
+  send(type: string, payload: unknown) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type, payload }));
     }

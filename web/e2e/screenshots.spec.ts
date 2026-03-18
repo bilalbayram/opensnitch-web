@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { setupMocks, injectAuth } from './fixtures/api-mocks';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +18,7 @@ function screenshotPath(name: string) {
 test('dashboard', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
+  await expect(page.getByText('api.github.com')).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath('dashboard'), fullPage: true });
 });
@@ -74,6 +75,15 @@ test('templates', async ({ page }) => {
 test('alerts', async ({ page }) => {
   await page.goto('/alerts');
   await page.waitForLoadState('networkidle');
+  await expect(page.getByText('312 connections denied in the last hour on gateway-01')).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath('alerts'), fullPage: true });
+});
+
+test('settings', async ({ page }) => {
+  await page.goto('/settings');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByText('This page now shows build information only.')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: screenshotPath('settings'), fullPage: true });
 });

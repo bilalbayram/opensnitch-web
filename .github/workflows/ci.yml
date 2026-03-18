@@ -62,6 +62,9 @@ jobs:
       - name: Build frontend
         run: cd web && npm ci && npm run build
 
+      - name: Verify embedded frontend is current
+        run: make verify-embed
+
       - name: Build binary
         run: make embed build
 

@@ -17,7 +17,6 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
 	"github.com/evilsocket/opensnitch-web/internal/templatesync"
-	"github.com/evilsocket/opensnitch-web/internal/updater"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 )
 
@@ -29,12 +28,11 @@ type API struct {
 	prompter     *prompter.Prompter
 	templateSync *templatesync.Service
 	fetcher      *blocklist.Fetcher
-	updater      *updater.Updater
 	geoResolver  *geoip.Resolver
 	upgrader     websocket.Upgrader
 }
 
-func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service, frontendFS fs.FS, upd *updater.Updater, geo *geoip.Resolver) http.Handler {
+func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Manager, hub *ws.Hub, p *prompter.Prompter, templateSync *templatesync.Service, frontendFS fs.FS, geo *geoip.Resolver) http.Handler {
 	api := &API{
 		cfg:          cfg,
 		db:           database,
@@ -43,7 +41,6 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		prompter:     p,
 		templateSync: templateSync,
 		fetcher:      blocklist.NewFetcher(),
-		updater:      upd,
 		geoResolver:  geo,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
@@ -155,8 +152,6 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 
 		// Version & Updates
 		r.Get("/api/v1/version", api.handleGetVersion)
-		r.Post("/api/v1/update/check", api.handleCheckUpdate)
-		r.Post("/api/v1/update/apply", api.handleApplyUpdate)
 	})
 
 	// Serve frontend — SPA fallback: serve index.html for non-API, non-file routes

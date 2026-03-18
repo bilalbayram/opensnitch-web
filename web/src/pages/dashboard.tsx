@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
-import { useAppStore } from '@/stores/app-store';
-import { formatNumber, formatUptime, actionColor, truncateMiddle } from '@/lib/utils';
-import { Server, Network, ShieldCheck, ShieldX, Eye, Activity } from 'lucide-react';
+import { api, type ConnectionRecord, type DashboardStats } from '@/lib/api';
+import { useAppStore, type ConnectionEvent } from '@/stores/app-store';
+import { formatNumber, actionColor, truncateMiddle } from '@/lib/utils';
+import { Server, Network, ShieldCheck, ShieldX, Eye, Activity, type LucideIcon } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 
-function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color?: string }) {
+function StatCard({ icon: Icon, label, value, color }: { icon: LucideIcon; label: string; value: string | number; color?: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-3 md:p-4">
       <div className="flex items-center gap-2 text-muted-foreground mb-1 md:mb-2">
@@ -18,9 +18,29 @@ function StatCard({ icon: Icon, label, value, color }: { icon: any; label: strin
   );
 }
 
+function mapConnectionRecord(conn: ConnectionRecord) {
+  return {
+    time: conn.time,
+    node: conn.node,
+    action: conn.action,
+    rule: conn.rule,
+    protocol: conn.protocol,
+    src_ip: conn.src_ip,
+    src_port: conn.src_port,
+    dst_ip: conn.dst_ip,
+    dst_host: conn.dst_host,
+    dst_port: conn.dst_port,
+    uid: conn.uid,
+    pid: conn.pid,
+    process: conn.process,
+    process_args: conn.process_args ? conn.process_args.split(' ') : [],
+  };
+}
+
 export default function DashboardPage() {
-  const { stats, nodesOnline, recentConnections } = useAppStore();
-  const [generalStats, setGeneralStats] = useState<any>(null);
+  const { stats, nodesOnline, recentConnections, setRecentConnections } = useAppStore();
+  const [generalStats, setGeneralStats] = useState<DashboardStats | null>(null);
+  const [recentFetchPending, setRecentFetchPending] = useState(true);
 
   useEffect(() => {
     api.getStats().then(setGeneralStats).catch(console.error);
@@ -29,6 +49,36 @@ export default function DashboardPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (recentConnections.length > 0) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    api.getConnections({ limit: '20', offset: '0' })
+      .then((res) => {
+        if (cancelled) {
+          return;
+        }
+        if (useAppStore.getState().recentConnections.length === 0) {
+          setRecentConnections((res.data || []).map(mapConnectionRecord));
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) {
+          setRecentFetchPending(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recentConnections.length, setRecentConnections]);
 
   // Aggregate stats from all nodes
   let totalConns = 0, totalDropped = 0, totalAccepted = 0, totalRules = 0;
@@ -53,6 +103,8 @@ export default function DashboardPage() {
   }, []);
 
   const recent = recentConnections.slice(0, 20);
+  const loadingRecent = recentConnections.length === 0 && recentFetchPending;
+  const recentEmptyMessage = loadingRecent ? 'Loading recent connections...' : 'No recent connections yet';
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -93,7 +145,7 @@ export default function DashboardPage() {
         <ResponsiveDataView
           data={recent}
           columns={7}
-          emptyMessage="Waiting for connections..."
+          emptyMessage={recentEmptyMessage}
           tableHead={
             <tr className="border-b border-border text-left text-xs text-muted-foreground">
               <th className="px-4 py-2">Time</th>
@@ -105,7 +157,7 @@ export default function DashboardPage() {
               <th className="px-4 py-2">Rule</th>
             </tr>
           }
-          renderRow={(conn: any, i: number) => (
+          renderRow={(conn: ConnectionEvent, i: number) => (
             <tr key={i} className="border-b border-border/50 hover:bg-muted/50">
               <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{conn.time}</td>
               <td className={`px-4 py-2 font-medium ${actionColor(conn.action)}`}>{conn.action}</td>
@@ -116,7 +168,7 @@ export default function DashboardPage() {
               <td className="px-4 py-2 text-xs text-muted-foreground">{conn.rule}</td>
             </tr>
           )}
-          renderCard={(conn: any, i: number) => (
+          renderCard={(conn: ConnectionEvent, i: number) => (
             <div key={i} className="bg-card border border-border rounded-xl p-3 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
