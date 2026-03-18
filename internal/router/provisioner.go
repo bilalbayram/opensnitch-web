@@ -76,21 +76,21 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	}
 	addStep("verify", "done", "OpenWrt verified")
 
-	// 3. Install conntrack-tools if needed
-	out, err = runCommand(client, "opkg list-installed 2>/dev/null | grep -q conntrack-tools && echo INSTALLED || echo MISSING")
+	// 3. Install conntrack if needed (OpenWrt package is "conntrack", not "conntrack-tools")
+	out, err = runCommand(client, "which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING")
 	if err != nil {
 		addStep("dependencies", "error", fmt.Sprintf("Failed to check packages: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 	if strings.TrimSpace(out) == "MISSING" {
-		out, err = runCommand(client, "opkg update && opkg install conntrack-tools")
+		out, err = runCommand(client, "opkg update && opkg install conntrack")
 		if err != nil {
-			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack-tools: %s", strings.TrimSpace(out)))
+			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack: %s", strings.TrimSpace(out)))
 			return &ProvisionResult{Steps: steps}, fmt.Errorf("opkg install failed: %w", err)
 		}
-		addStep("dependencies", "done", "Installed conntrack-tools")
+		addStep("dependencies", "done", "Installed conntrack")
 	} else {
-		addStep("dependencies", "done", "conntrack-tools already installed")
+		addStep("dependencies", "done", "conntrack already available")
 	}
 
 	// 4. Generate API key and render config
