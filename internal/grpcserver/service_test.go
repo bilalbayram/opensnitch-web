@@ -3,6 +3,7 @@ package grpcserver
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -234,6 +235,182 @@ func TestAskRuleReusesRememberedDecisionsForDenyAndReject(t *testing.T) {
 				t.Fatalf("expected no second prompt, got %d prompts", promptCount.Load())
 			}
 		})
+	}
+}
+
+func TestPingStoresConnectionEvents(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+	nodeAddr := "node-a"
+
+	if _, err := env.service.Subscribe(askRuleContext(nodeAddr), &pb.ClientConfig{
+		Name:    "test-node",
+		Version: "1.0.0",
+	}); err != nil {
+		t.Fatalf("subscribe node: %v", err)
+	}
+
+	_, err := env.service.Ping(askRuleContext(nodeAddr), &pb.PingRequest{
+		Id: 1,
+		Stats: &pb.Statistics{
+			DaemonVersion: "1.0.0",
+			Events: []*pb.Event{
+				{
+					Time: "2026-03-16 10:00:00",
+					Connection: &pb.Connection{
+						ProcessPath: "/usr/bin/curl",
+						DstHost:     "example.com",
+						DstIp:       "93.184.216.34",
+						DstPort:     443,
+						Protocol:    "tcp",
+					},
+					Rule: &pb.Rule{
+						Name:   "silent-allow",
+						Action: "allow",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+
+	conns, total, err := env.database.GetConnections(&db.ConnectionFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("get connections: %v", err)
+	}
+	if total != 1 || len(conns) != 1 {
+		t.Fatalf("expected one connection, got total=%d len=%d", total, len(conns))
+	}
+	if conns[0].Rule != "silent-allow" || conns[0].Action != "allow" {
+		t.Fatalf("unexpected persisted connection: %+v", conns[0])
+	}
+}
+
+func TestAskRuleSilentAllowPersistsConnection(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+	nodeAddr := "node-a"
+	env.seedNode(t, nodeAddr)
+
+	if err := env.database.SetNodeMode(nodeAddr, "silent_allow"); err != nil {
+		t.Fatalf("set node mode: %v", err)
+	}
+
+	rule, err := env.service.AskRule(askRuleContext(nodeAddr), testConnection())
+	if err != nil {
+		t.Fatalf("ask rule: %v", err)
+	}
+	if rule.GetAction() != "allow" {
+		t.Fatalf("expected allow action, got %q", rule.GetAction())
+	}
+
+	conns, total, err := env.database.GetConnections(&db.ConnectionFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("get connections: %v", err)
+	}
+	if total != 1 || len(conns) != 1 {
+		t.Fatalf("expected one connection, got total=%d len=%d", total, len(conns))
+	}
+	if conns[0].Rule != "silent-allow" || conns[0].Action != "allow" {
+		t.Fatalf("unexpected persisted connection: %+v", conns[0])
+	}
+}
+
+func TestAskRulePromptReplyPersistsConnection(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+	nodeAddr := "node-a"
+	env.seedNode(t, nodeAddr)
+
+	env.prompter.OnNewPrompt = func(prompt *prompter.PendingPrompt) {
+		if err := env.prompter.Reply(prompt.ID, replyRule("allow")); err != nil {
+			t.Errorf("reply prompt: %v", err)
+		}
+	}
+
+	rule, err := env.service.AskRule(askRuleContext(nodeAddr), testConnection())
+	if err != nil {
+		t.Fatalf("ask rule: %v", err)
+	}
+	if rule.GetAction() != "allow" {
+		t.Fatalf("expected allow action, got %q", rule.GetAction())
+	}
+
+	conns, total, err := env.database.GetConnections(&db.ConnectionFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("get connections: %v", err)
+	}
+	if total != 1 || len(conns) != 1 {
+		t.Fatalf("expected one connection, got total=%d len=%d", total, len(conns))
+	}
+	if conns[0].Rule != "web-rule" || conns[0].Action != "allow" {
+		t.Fatalf("unexpected persisted connection: %+v", conns[0])
+	}
+}
+
+func TestPostAlertStoresRenderedBodies(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+
+	testCases := []struct {
+		name  string
+		alert *pb.Alert
+		match string
+	}{
+		{
+			name: "text",
+			alert: &pb.Alert{
+				Id:       1,
+				Type:     pb.Alert_WARNING,
+				Priority: pb.Alert_MEDIUM,
+				What:     pb.Alert_GENERIC,
+				Data: &pb.Alert_Text{
+					Text: "disk almost full",
+				},
+			},
+			match: "disk almost full",
+		},
+		{
+			name: "connection",
+			alert: &pb.Alert{
+				Id:       2,
+				Type:     pb.Alert_WARNING,
+				Priority: pb.Alert_HIGH,
+				What:     pb.Alert_CONNECTION,
+				Data: &pb.Alert_Conn{
+					Conn: testConnection(),
+				},
+			},
+			match: "example.com",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := env.service.PostAlert(askRuleContext("node-a"), tc.alert); err != nil {
+				t.Fatalf("post alert: %v", err)
+			}
+		})
+	}
+
+	alerts, total, err := env.database.GetAlerts(10, 0)
+	if err != nil {
+		t.Fatalf("get alerts: %v", err)
+	}
+	if total != len(testCases) || len(alerts) != len(testCases) {
+		t.Fatalf("expected %d alerts, got total=%d len=%d", len(testCases), total, len(alerts))
+	}
+
+	bodies := []string{alerts[0].Body, alerts[1].Body}
+	for _, tc := range testCases {
+		found := false
+		for _, body := range bodies {
+			if strings.Contains(body, tc.match) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected alert bodies %v to contain %q", bodies, tc.match)
+		}
 	}
 }
 

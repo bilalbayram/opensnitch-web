@@ -2,15 +2,14 @@ package ws
 
 // Event types sent from server to browser
 const (
-	EventStatsUpdate     = "stats_update"
-	EventConnectionEvent = "connection_event"
-	EventPromptRequest   = "prompt_request"
-	EventPromptTimeout   = "prompt_timeout"
-	EventNodeConnected   = "node_connected"
+	EventStatsUpdate      = "stats_update"
+	EventConnectionEvent  = "connection_event"
+	EventPromptRequest    = "prompt_request"
+	EventPromptTimeout    = "prompt_timeout"
+	EventNodeConnected    = "node_connected"
 	EventNodeDisconnected = "node_disconnected"
 	EventNewAlert         = "new_alert"
 	EventRuleChanged      = "rule_changed"
-	EventUpdateAvailable  = "update_available"
 )
 
 // Event types sent from browser to server
@@ -32,11 +31,11 @@ type PromptPayload struct {
 }
 
 type PromptReplyPayload struct {
-	PromptID  string `json:"prompt_id"`
-	Action    string `json:"action"`
-	Duration  string `json:"duration"`
-	Name      string `json:"name"`
-	Operand   string `json:"operand"`
-	Data      string `json:"data"`
-	Operator  string `json:"operator"`
+	PromptID string `json:"prompt_id"`
+	Action   string `json:"action"`
+	Duration string `json:"duration"`
+	Name     string `json:"name"`
+	Operand  string `json:"operand"`
+	Data     string `json:"data"`
+	Operator string `json:"operator"`
 }

@@ -1,27 +1,50 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, type AlertRecord } from '@/lib/api';
+import { wsClient } from '@/lib/ws';
 import { alertTypeLabel, priorityLabel } from '@/lib/utils';
 import { Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const limit = 50;
 
-  const fetchAlerts = () => {
+  useEffect(() => {
+    let cancelled = false;
+
+    api.getAlerts(limit, page * limit).then((res) => {
+      if (cancelled) {
+        return;
+      }
+      setAlerts(res.data || []);
+      setTotal(res.total);
+    }).catch(console.error);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
+
+  useEffect(() => {
+    const unsubscribe = wsClient.on('new_alert', () => {
+      setPage(0);
+      api.getAlerts(limit, 0).then((res) => {
+        setAlerts(res.data || []);
+        setTotal(res.total);
+      }).catch(console.error);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleDelete = async (id: number) => {
+    await api.deleteAlert(id);
     api.getAlerts(limit, page * limit).then((res) => {
       setAlerts(res.data || []);
       setTotal(res.total);
     }).catch(console.error);
-  };
-
-  useEffect(() => { fetchAlerts(); }, [page]);
-
-  const handleDelete = async (id: number) => {
-    await api.deleteAlert(id);
-    fetchAlerts();
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -54,7 +77,7 @@ export default function AlertsPage() {
       <ResponsiveDataView
         data={alerts}
         columns={6}
-        emptyMessage="No alerts"
+        emptyMessage="No alerts yet. Silent Allow mode may not generate any during initial learning."
         tableHead={
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
             <th className="px-4 py-2">Time</th>
@@ -65,7 +88,7 @@ export default function AlertsPage() {
             <th className="px-4 py-2"></th>
           </tr>
         }
-        renderRow={(a: any) => (
+        renderRow={(a: AlertRecord) => (
           <tr key={a.id} className="border-b border-border/50 hover:bg-muted/50">
             <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{a.time}</td>
             <td className="px-4 py-2 text-xs">{a.node}</td>
@@ -79,7 +102,7 @@ export default function AlertsPage() {
             </td>
           </tr>
         )}
-        renderCard={(a: any) => (
+        renderCard={(a: AlertRecord) => (
           <div key={a.id} className="bg-card border border-border rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
