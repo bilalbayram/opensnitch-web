@@ -1,0 +1,142 @@
+#!/bin/sh
+# conntrack-agent: lightweight outbound connection monitor for OpenWrt
+# Streams new outbound TCP/UDP connections to an opensnitch-web server.
+# Designed for busybox ash — no bash-isms.
+
+CONFIG="/etc/conntrack-agent/config"
+if [ ! -f "$CONFIG" ]; then
+    logger -t conntrack-agent "config not found: $CONFIG"
+    exit 1
+fi
+. "$CONFIG"
+
+BATCH_FILE="/tmp/conntrack-agent-batch"
+BATCH_COUNT=0
+MAX_BATCH=${BATCH_SIZE:-20}
+FLUSH_INTERVAL=${BATCH_INTERVAL:-5}
+
+# Ensure clean start
+rm -f "$BATCH_FILE"
+echo '{"events":[' > "$BATCH_FILE"
+
+is_private_ip() {
+    case "$1" in
+        10.*) return 0 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*) return 0 ;;
+        192.168.*) return 0 ;;
+        127.*) return 0 ;;
+        224.*|239.*) return 0 ;;
+        255.255.255.255) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_lan_ip() {
+    case "$1" in
+        ${LAN_PREFIX}*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+flush_batch() {
+    if [ "$BATCH_COUNT" -eq 0 ]; then
+        return
+    fi
+
+    # Close the JSON array (remove trailing comma via sed)
+    sed -i '$ s/,$//' "$BATCH_FILE"
+    echo ']}' >> "$BATCH_FILE"
+
+    PAYLOAD=$(cat "$BATCH_FILE")
+
+    wget -q -O /dev/null \
+        --post-data="$PAYLOAD" \
+        --header="X-API-Key: $API_KEY" \
+        --header="Content-Type: application/json" \
+        --timeout=10 \
+        "$SERVER_URL/api/v1/ingest" 2>/dev/null
+
+    if [ $? -ne 0 ]; then
+        logger -t conntrack-agent "POST failed, dropped $BATCH_COUNT events"
+    fi
+
+    # Reset
+    BATCH_COUNT=0
+    rm -f "$BATCH_FILE"
+    echo '{"events":[' > "$BATCH_FILE"
+}
+
+trap 'flush_batch; exit 0' INT TERM
+
+# Main loop: poll conntrack table periodically instead of event streaming.
+# This avoids signal delivery issues with ash pipelines and is more
+# reliable on resource-constrained routers.
+SEEN_FILE="/tmp/conntrack-agent-seen"
+rm -f "$SEEN_FILE"
+touch "$SEEN_FILE"
+
+while true; do
+    # Snapshot current connections — conntrack -L outputs one line per entry:
+    # tcp  6 117 SYN_SENT src=192.168.1.10 dst=8.8.8.8 sport=54321 dport=53 ...
+    conntrack -L -o extended 2>/dev/null | while IFS= read -r LINE; do
+        # Extract protocol: first word on the line
+        PROTO=$(echo "$LINE" | awk '{print $1}')
+        SRC=""
+        DST=""
+        SPORT=""
+        DPORT=""
+
+        # Parse key=value fields
+        for FIELD in $LINE; do
+            case "$FIELD" in
+                src=*)
+                    VAL="${FIELD#src=}"
+                    [ -z "$SRC" ] && SRC="$VAL"
+                    ;;
+                dst=*)
+                    VAL="${FIELD#dst=}"
+                    [ -z "$DST" ] && DST="$VAL"
+                    ;;
+                sport=*)
+                    VAL="${FIELD#sport=}"
+                    [ -z "$SPORT" ] && SPORT="$VAL"
+                    ;;
+                dport=*)
+                    VAL="${FIELD#dport=}"
+                    [ -z "$DPORT" ] && DPORT="$VAL"
+                    ;;
+            esac
+        done
+
+        # Skip incomplete
+        [ -z "$PROTO" ] || [ -z "$SRC" ] || [ -z "$DST" ] || [ -z "$DPORT" ] && continue
+
+        # Filter: only LAN src -> non-private dst (outbound to internet)
+        is_lan_ip "$SRC" || continue
+        is_private_ip "$DST" && continue
+
+        # Dedup: skip if we already reported this flow in this cycle
+        FLOW_KEY="${PROTO}_${SRC}_${DST}_${DPORT}"
+        grep -qF "$FLOW_KEY" "$SEEN_FILE" && continue
+        echo "$FLOW_KEY" >> "$SEEN_FILE"
+
+        [ -z "$SPORT" ] && SPORT="0"
+
+        printf '{"protocol":"%s","src_ip":"%s","src_port":%s,"dst_ip":"%s","dst_host":"","dst_port":%s},\n' \
+            "$PROTO" "$SRC" "$SPORT" "$DST" "$DPORT" >> "$BATCH_FILE"
+
+        BATCH_COUNT=$((BATCH_COUNT + 1))
+    done
+
+    # Flush after each poll cycle
+    flush_batch
+
+    # Rotate seen file to allow re-reporting after a few cycles
+    SEEN_LINES=$(wc -l < "$SEEN_FILE" 2>/dev/null || echo 0)
+    if [ "$SEEN_LINES" -gt 10000 ]; then
+        tail -n 5000 "$SEEN_FILE" > "${SEEN_FILE}.tmp"
+        mv "${SEEN_FILE}.tmp" "$SEEN_FILE"
+    fi
+
+    sleep "$FLUSH_INTERVAL"
+done
