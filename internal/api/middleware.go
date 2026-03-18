@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/evilsocket/opensnitch-web/internal/config"
@@ -72,6 +73,12 @@ func JWTAuthMiddleware(cfg *config.AuthConfig) func(http.Handler) http.Handler {
 				if cookie, err := r.Cookie("token"); err == nil {
 					tokenStr = cookie.Value
 				}
+			}
+
+			// WebSocket clients cannot reliably set Authorization headers on the
+			// native browser API, so allow the token query param only on upgrades.
+			if tokenStr == "" && websocket.IsWebSocketUpgrade(r) && r.URL.Path == "/api/v1/ws" {
+				tokenStr = r.URL.Query().Get("token")
 			}
 
 			if tokenStr == "" {

@@ -1,4 +1,4 @@
-.PHONY: all build proto frontend clean run dev embed
+.PHONY: all build proto frontend clean run dev embed verify-embed
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -20,6 +20,9 @@ frontend:
 embed: frontend
 	rm -rf cmd/opensnitch-web/frontend
 	cp -r web/dist cmd/opensnitch-web/frontend
+
+verify-embed: embed
+	git diff --exit-code -- cmd/opensnitch-web/frontend
 
 # Build Go binary (with embedded frontend)
 build: embed
