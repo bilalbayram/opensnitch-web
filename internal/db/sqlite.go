@@ -116,7 +116,9 @@ func (d *Database) migrate() error {
 		cons_dropped INTEGER NOT NULL DEFAULT 0,
 		version TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'offline',
-		last_connection TEXT NOT NULL DEFAULT ''
+		last_connection TEXT NOT NULL DEFAULT '',
+		mode TEXT NOT NULL DEFAULT 'ask',
+		source_type TEXT NOT NULL DEFAULT 'opensnitch'
 	);
 
 	CREATE TABLE IF NOT EXISTS rules (
