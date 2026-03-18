@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { NodeRecord, ProvisionStep } from "@/lib/api";
+import type { NodeRecord, ProvisionStep, DiscoveredRouter } from "@/lib/api";
 import { api } from "@/lib/api";
 import { formatUptime } from "@/lib/utils";
 import {
@@ -18,6 +18,8 @@ import {
   X,
   Loader2,
   Unplug,
+  Radar,
+  Wifi,
 } from "lucide-react";
 import { ResponsiveDataView } from "@/components/ui/responsive-data-view";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
@@ -76,6 +78,11 @@ export default function NodesPage() {
     null,
   );
   const [connectError, setConnectError] = useState("");
+
+  // Network scan state
+  const [scanning, setScanning] = useState(false);
+  const [scanResults, setScanResults] = useState<DiscoveredRouter[] | null>(null);
+  const [scanSubnet, setScanSubnet] = useState("");
 
   // Router disconnect state
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
@@ -295,6 +302,30 @@ export default function NodesPage() {
       return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
     }
     return "";
+  };
+
+  const handleScanNetwork = async () => {
+    setScanning(true);
+    setScanResults(null);
+    try {
+      const res = await api.scanRouters(scanSubnet || undefined);
+      setScanResults(res.devices);
+      if (!scanSubnet) setScanSubnet(res.subnet);
+    } catch (e: unknown) {
+      setConnectError(e instanceof Error ? e.message : "Scan failed");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const selectDiscoveredRouter = (device: DiscoveredRouter) => {
+    setRouterForm((prev) => ({
+      ...prev,
+      addr: device.ip,
+      ssh_port: device.ssh_port,
+      lan_subnet: autoDetectSubnet(device.ip),
+    }));
+    setScanResults(null);
   };
 
   const trustLevelOptions = ["trusted", "untrusted", "default"] as const;
@@ -751,6 +782,7 @@ export default function NodesPage() {
             setShowConnectRouter(false);
             setConnectError("");
             setConnectSteps(null);
+            setScanResults(null);
           }
         }}
         title="Connect Router"
@@ -804,6 +836,68 @@ export default function NodesPage() {
           ) : (
             // Show form
             <>
+              {/* Network scan */}
+              <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Radar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Discover Routers</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Subnet (auto-detect)"
+                    value={scanSubnet}
+                    onChange={(e) => setScanSubnet(e.target.value)}
+                    className="flex-1 text-sm px-3 py-2 rounded-lg bg-card border border-border focus:outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={handleScanNetwork}
+                    disabled={scanning}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                  >
+                    {scanning ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Radar className="h-3.5 w-3.5" />
+                    )}
+                    {scanning ? "Scanning..." : "Scan"}
+                  </button>
+                </div>
+                {scanResults !== null && (
+                  <div className="space-y-1.5">
+                    {scanResults.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No SSH devices found on this subnet.</p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground">{scanResults.length} device(s) found:</p>
+                        {scanResults.map((device) => (
+                          <button
+                            key={device.ip}
+                            onClick={() => selectDiscoveredRouter(device)}
+                            className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                              device.is_openwrt
+                                ? "border-success/30 bg-success/5 hover:bg-success/10"
+                                : "border-border bg-card hover:bg-muted/50"
+                            }`}
+                          >
+                            <Wifi className={`h-4 w-4 shrink-0 ${device.is_openwrt ? "text-success" : "text-muted-foreground"}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium">{device.ip}</div>
+                              <div className="text-xs text-muted-foreground truncate">{device.banner}</div>
+                            </div>
+                            {device.is_openwrt && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/30 shrink-0">
+                                OpenWrt
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Router IP Address</label>
                 <input
