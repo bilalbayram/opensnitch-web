@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { wsClient } from '@/lib/ws';
-import { useAppStore } from '@/stores/app-store';
+import { useAppStore, type ConnectionEvent, type Prompt, type StatsData } from '@/stores/app-store';
 
 export function useWebSocket() {
-  const { token, setWSConnected, updateStats, addPrompt, removePrompt, addConnection, addNodeOnline, removeNodeOnline, setUpdateAvailable } = useAppStore();
+  const { token, setWSConnected, updateStats, addPrompt, removePrompt, addConnection, addNodeOnline, removeNodeOnline } = useAppStore();
 
   useEffect(() => {
     if (!token) return;
@@ -11,13 +11,12 @@ export function useWebSocket() {
     wsClient.connect();
 
     const unsubs = [
-      wsClient.on('stats_update', (e) => updateStats(e.payload)),
-      wsClient.on('connection_event', (e) => addConnection(e.payload)),
-      wsClient.on('prompt_request', (e) => addPrompt(e.payload)),
-      wsClient.on('prompt_timeout', (e) => removePrompt(e.payload.id)),
-      wsClient.on('node_connected', (e) => addNodeOnline(e.payload.addr)),
-      wsClient.on('node_disconnected', (e) => removeNodeOnline(e.payload.addr)),
-      wsClient.on('update_available', (e) => setUpdateAvailable(true, e.payload.latest_version)),
+      wsClient.on<StatsData>('stats_update', (e) => updateStats(e.payload)),
+      wsClient.on<ConnectionEvent>('connection_event', (e) => addConnection(e.payload)),
+      wsClient.on<Prompt>('prompt_request', (e) => addPrompt(e.payload)),
+      wsClient.on<{ id: string }>('prompt_timeout', (e) => removePrompt(e.payload.id)),
+      wsClient.on<{ addr: string }>('node_connected', (e) => addNodeOnline(e.payload.addr)),
+      wsClient.on<{ addr: string }>('node_disconnected', (e) => removeNodeOnline(e.payload.addr)),
     ];
 
     const checkInterval = setInterval(() => {

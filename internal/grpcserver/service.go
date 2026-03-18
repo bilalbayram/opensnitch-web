@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -56,6 +57,118 @@ func normalizeEventTime(value string, unixnano int64) string {
 		return ruleutil.FormatStoredTime(ts)
 	}
 	return value
+}
+
+func normalizePeerAddr(value string) string {
+	host, _, err := net.SplitHostPort(value)
+	if err == nil {
+		return host
+	}
+	return value
+}
+
+func (s *UIService) persistConnection(node string, conn *pb.Connection, rule *pb.Rule, eventTime string) {
+	if conn == nil {
+		return
+	}
+
+	action := ""
+	ruleName := ""
+	if rule != nil {
+		action = strings.TrimSpace(rule.GetAction())
+		ruleName = strings.TrimSpace(rule.GetName())
+	}
+	if eventTime == "" {
+		eventTime = ruleutil.FormatStoredTime(time.Now())
+	}
+
+	record := &db.Connection{
+		Time:        eventTime,
+		Node:        node,
+		Action:      action,
+		Protocol:    conn.GetProtocol(),
+		SrcIP:       normalizePeerAddr(conn.GetSrcIp()),
+		SrcPort:     int(conn.GetSrcPort()),
+		DstIP:       normalizePeerAddr(conn.GetDstIp()),
+		DstHost:     conn.GetDstHost(),
+		DstPort:     int(conn.GetDstPort()),
+		UID:         int(conn.GetUserId()),
+		PID:         int(conn.GetProcessId()),
+		Process:     conn.GetProcessPath(),
+		ProcessArgs: strings.Join(conn.GetProcessArgs(), " "),
+		ProcessCwd:  conn.GetProcessCwd(),
+		Rule:        ruleName,
+	}
+
+	if err := s.db.InsertConnection(record); err != nil {
+		log.Printf("[grpc] Failed to store connection for %s: %v", node, err)
+	}
+
+	if record.DstHost != "" && record.DstIP != "" && record.DstPort != 53 {
+		if err := s.db.UpsertDNSDomain(node, record.DstHost, record.DstIP, eventTime); err != nil {
+			log.Printf("[grpc] Failed to upsert DNS mapping for %s: %v", node, err)
+		}
+	}
+
+	s.hub.BroadcastEvent(ws.EventConnectionEvent, map[string]interface{}{
+		"time":         record.Time,
+		"node":         record.Node,
+		"action":       record.Action,
+		"rule":         record.Rule,
+		"protocol":     record.Protocol,
+		"src_ip":       record.SrcIP,
+		"src_port":     record.SrcPort,
+		"dst_ip":       record.DstIP,
+		"dst_host":     record.DstHost,
+		"dst_port":     record.DstPort,
+		"uid":          record.UID,
+		"pid":          record.PID,
+		"process":      record.Process,
+		"process_args": conn.GetProcessArgs(),
+	})
+}
+
+func formatAlertBody(alert *pb.Alert) string {
+	if alert == nil {
+		return ""
+	}
+
+	switch data := alert.GetData().(type) {
+	case *pb.Alert_Text:
+		return strings.TrimSpace(data.Text)
+	case *pb.Alert_Proc:
+		proc := data.Proc
+		if proc == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf("Process %s (pid %d)", proc.GetPath(), proc.GetPid()))
+	case *pb.Alert_Conn:
+		conn := data.Conn
+		if conn == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf(
+			"%s -> %s:%d (%s)",
+			conn.GetProcessPath(),
+			conn.GetDstHost(),
+			conn.GetDstPort(),
+			conn.GetProtocol(),
+		))
+	case *pb.Alert_Rule:
+		rule := data.Rule
+		if rule == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf("Rule %s (%s)", rule.GetName(), rule.GetAction()))
+	case *pb.Alert_Fwrule:
+		fwRule := data.Fwrule
+		if fwRule == nil {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprintf("Firewall rule %s", fwRule.GetDescription()))
+	default:
+		return ""
+	}
 }
 
 // Subscribe is called when a daemon first connects.
@@ -139,53 +252,7 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 			if evt.Connection == nil {
 				continue
 			}
-			conn := evt.Connection
-			action := ""
-			ruleName := ""
-			if evt.Rule != nil {
-				action = evt.Rule.Action
-				ruleName = evt.Rule.Name
-			}
-
-			s.db.InsertConnection(&db.Connection{
-				Time:        normalizeEventTime(evt.Time, evt.Unixnano),
-				Node:        peerAddr,
-				Action:      action,
-				Protocol:    conn.Protocol,
-				SrcIP:       conn.SrcIp,
-				SrcPort:     int(conn.SrcPort),
-				DstIP:       conn.DstIp,
-				DstHost:     conn.DstHost,
-				DstPort:     int(conn.DstPort),
-				UID:         int(conn.UserId),
-				PID:         int(conn.ProcessId),
-				Process:     conn.ProcessPath,
-				ProcessArgs: strings.Join(conn.ProcessArgs, " "),
-				ProcessCwd:  conn.ProcessCwd,
-				Rule:        ruleName,
-			})
-
-			// Record domain-to-IP mapping for non-DNS connections
-			if conn.DstHost != "" && conn.DstIp != "" && conn.DstPort != 53 {
-				s.db.UpsertDNSDomain(peerAddr, conn.DstHost, conn.DstIp, normalizeEventTime(evt.Time, evt.Unixnano))
-			}
-
-			s.hub.BroadcastEvent(ws.EventConnectionEvent, map[string]interface{}{
-				"time":         evt.Time,
-				"node":         peerAddr,
-				"action":       action,
-				"rule":         ruleName,
-				"protocol":     conn.Protocol,
-				"src_ip":       conn.SrcIp,
-				"src_port":     conn.SrcPort,
-				"dst_ip":       conn.DstIp,
-				"dst_host":     conn.DstHost,
-				"dst_port":     conn.DstPort,
-				"uid":          conn.UserId,
-				"pid":          conn.ProcessId,
-				"process":      conn.ProcessPath,
-				"process_args": conn.ProcessArgs,
-			})
+			s.persistConnection(peerAddr, evt.Connection, evt.Rule, normalizeEventTime(evt.Time, evt.Unixnano))
 		}
 
 		// Update stats tables
@@ -241,7 +308,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	// 1. Check blocklist — auto-deny blocked domains (even in silent_allow mode)
 	if conn.DstHost != "" && s.db.IsDomainBlocked(conn.DstHost) {
 		log.Printf("[grpc] AskRule: domain %s blocked by blocklist", conn.DstHost)
-		return &pb.Rule{
+		rule := &pb.Rule{
 			Name:     "blocklist-deny",
 			Action:   "deny",
 			Duration: "once",
@@ -250,7 +317,9 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Operand: "dest.host",
 				Data:    conn.DstHost,
 			},
-		}, nil
+		}
+		s.persistConnection(peerAddr, conn, rule, "")
+		return rule, nil
 	}
 
 	// 2. Check process trust list
@@ -258,7 +327,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	switch trustLevel {
 	case "trusted":
 		log.Printf("[grpc] AskRule: process %s trusted, auto-allow", conn.ProcessPath)
-		return &pb.Rule{
+		rule := &pb.Rule{
 			Name:     "trust-allow",
 			Action:   "allow",
 			Duration: "once",
@@ -267,7 +336,9 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Operand: "process.path",
 				Data:    conn.ProcessPath,
 			},
-		}, nil
+		}
+		s.persistConnection(peerAddr, conn, rule, "")
+		return rule, nil
 	case "untrusted":
 		log.Printf("[grpc] AskRule: process %s untrusted, forcing prompt", conn.ProcessPath)
 		result, err := s.prompter.AskUser(peerAddr, conn)
@@ -275,6 +346,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 			return nil, err
 		}
 		s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
+		s.persistConnection(peerAddr, conn, result.Rule, "")
 		return result.Rule, nil
 	}
 
@@ -283,7 +355,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	switch mode {
 	case "silent_allow":
 		log.Printf("[grpc] AskRule: silent_allow for node %s", peerAddr)
-		return &pb.Rule{
+		rule := &pb.Rule{
 			Name:     "silent-allow",
 			Action:   "allow",
 			Duration: "once",
@@ -292,10 +364,12 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Operand: "dest.host",
 				Data:    conn.DstHost,
 			},
-		}, nil
+		}
+		s.persistConnection(peerAddr, conn, rule, "")
+		return rule, nil
 	case "silent_deny":
 		log.Printf("[grpc] AskRule: silent_deny for node %s", peerAddr)
-		return &pb.Rule{
+		rule := &pb.Rule{
 			Name:     "silent-deny",
 			Action:   "deny",
 			Duration: "once",
@@ -304,7 +378,9 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Operand: "dest.host",
 				Data:    conn.DstHost,
 			},
-		}, nil
+		}
+		s.persistConnection(peerAddr, conn, rule, "")
+		return rule, nil
 	}
 
 	// 4. "ask" mode — fall through to user prompt
@@ -335,6 +411,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		return nil, err
 	}
 	s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
+	s.persistConnection(peerAddr, conn, result.Rule, "")
 
 	return result.Rule, nil
 }
@@ -463,11 +540,7 @@ func (s *UIService) PostAlert(ctx context.Context, alert *pb.Alert) (*pb.MsgResp
 	peerAddr := peerAddrFromCtx(ctx)
 	log.Printf("[grpc] PostAlert from %s: type=%v priority=%v what=%v", peerAddr, alert.Type, alert.Priority, alert.What)
 
-	body := ""
-	switch d := alert.Data.(type) {
-	case *pb.Alert_Text:
-		body = d.Text
-	}
+	body := formatAlertBody(alert)
 
 	s.db.InsertAlert(&db.DBAlert{
 		Time:     time.Now().Format("2006-01-02 15:04:05"),

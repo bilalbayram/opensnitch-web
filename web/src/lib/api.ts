@@ -17,6 +17,49 @@ export interface NodeRecord {
   template_sync_error: string;
 }
 
+export interface ConnectionRecord {
+  id: number;
+  time: string;
+  node: string;
+  action: string;
+  protocol: string;
+  src_ip: string;
+  src_port: number;
+  dst_ip: string;
+  dst_host: string;
+  dst_port: number;
+  uid: number;
+  pid: number;
+  process: string;
+  process_args: string;
+  process_cwd: string;
+  rule: string;
+}
+
+export interface VersionInfo {
+  current_version: string;
+  build_time?: string;
+}
+
+export interface AlertRecord {
+  id: number;
+  time: string;
+  node: string;
+  type: number;
+  priority: number;
+  what: number;
+  body: string;
+}
+
+export interface DashboardStats {
+  nodes_online: number;
+  connections: number;
+  accepted: number;
+  dropped: number;
+  rules: number;
+  ws_clients: number;
+}
+
 export interface RuleOperator {
   type?: string;
   operand?: string;
@@ -228,7 +271,9 @@ export const api = {
   // Connections
   getConnections: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<{ data: any[]; total: number }>(`/connections${qs}`);
+    return request<{ data: ConnectionRecord[]; total: number }>(
+      `/connections${qs}`,
+    );
   },
   purgeConnections: () => request("/connections", { method: "DELETE" }),
   getSeenFlows: (params?: Record<string, string>) => {
@@ -239,7 +284,7 @@ export const api = {
   },
 
   // Stats
-  getStats: () => request<any>("/stats"),
+  getStats: () => request<DashboardStats>("/stats"),
   getStatsByTable: (table: string, limit?: number) =>
     request<Array<Record<string, unknown>>>(
       `/stats/${table}${limit ? `?limit=${limit}` : ""}`,
@@ -292,7 +337,7 @@ export const api = {
 
   // Alerts
   getAlerts: (limit?: number, offset?: number) =>
-    request<{ data: any[]; total: number }>(
+    request<{ data: AlertRecord[]; total: number }>(
       `/alerts?limit=${limit || 50}&offset=${offset || 0}`,
     ),
   deleteAlert: (id: number) => request(`/alerts/${id}`, { method: "DELETE" }),
@@ -437,40 +482,5 @@ export const api = {
     ),
 
   // Version & Updates
-  getVersion: () =>
-    request<{
-      current_version: string;
-      build_time?: string;
-      latest_version?: string;
-      update_available: boolean;
-      last_check?: string;
-      checking: boolean;
-      downloading: boolean;
-      error?: string;
-      release?: {
-        tag_name: string;
-        published_at: string;
-        html_url: string;
-        body: string;
-      };
-    }>("/version"),
-  checkUpdate: () =>
-    request<{
-      current_version: string;
-      build_time?: string;
-      latest_version?: string;
-      update_available: boolean;
-      last_check?: string;
-      checking: boolean;
-      downloading: boolean;
-      error?: string;
-      release?: {
-        tag_name: string;
-        published_at: string;
-        html_url: string;
-        body: string;
-      };
-    }>("/update/check", { method: "POST" }),
-  applyUpdate: () =>
-    request<{ status: string }>("/update/apply", { method: "POST" }),
+  getVersion: () => request<VersionInfo>("/version"),
 };

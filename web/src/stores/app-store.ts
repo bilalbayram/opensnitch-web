@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-interface StatsData {
+export interface StatsData {
   node: string;
   daemon_version: string;
   uptime: number;
@@ -20,7 +20,7 @@ interface StatsData {
   by_executable: Record<string, number>;
 }
 
-interface Prompt {
+export interface Prompt {
   id: string;
   node_addr: string;
   created_at: string;
@@ -38,7 +38,7 @@ interface Prompt {
   checksums: Record<string, string>;
 }
 
-interface ConnectionEvent {
+export interface ConnectionEvent {
   time: string;
   node: string;
   action: string;
@@ -55,6 +55,41 @@ interface ConnectionEvent {
   process_args: string[];
 }
 
+function connectionFingerprint(conn: ConnectionEvent): string {
+  return [
+    conn.node,
+    conn.time,
+    conn.action,
+    conn.protocol,
+    conn.src_ip,
+    conn.src_port,
+    conn.dst_ip,
+    conn.dst_host,
+    conn.dst_port,
+    conn.process,
+    conn.rule,
+  ].join("|");
+}
+
+function dedupeConnections(connections: ConnectionEvent[]): ConnectionEvent[] {
+  const seen = new Set<string>();
+  const deduped: ConnectionEvent[] = [];
+
+  for (const conn of connections) {
+    const fingerprint = connectionFingerprint(conn);
+    if (seen.has(fingerprint)) {
+      continue;
+    }
+    seen.add(fingerprint);
+    deduped.push(conn);
+    if (deduped.length >= 200) {
+      break;
+    }
+  }
+
+  return deduped;
+}
+
 interface AppState {
   user: string | null;
   token: string | null;
@@ -63,18 +98,16 @@ interface AppState {
   prompts: Prompt[];
   recentConnections: ConnectionEvent[];
   nodesOnline: Set<string>;
-  updateAvailable: boolean;
-  latestVersion: string | null;
 
   setUser: (user: string | null, token: string | null) => void;
   setWSConnected: (connected: boolean) => void;
   updateStats: (data: StatsData) => void;
   addPrompt: (prompt: Prompt) => void;
   removePrompt: (id: string) => void;
+  setRecentConnections: (connections: ConnectionEvent[]) => void;
   addConnection: (conn: ConnectionEvent) => void;
   addNodeOnline: (addr: string) => void;
   removeNodeOnline: (addr: string) => void;
-  setUpdateAvailable: (available: boolean, version: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -85,8 +118,6 @@ export const useAppStore = create<AppState>((set) => ({
   prompts: [],
   recentConnections: [],
   nodesOnline: new Set(),
-  updateAvailable: false,
-  latestVersion: null,
 
   setUser: (user, token) => {
     if (token) {
@@ -114,9 +145,14 @@ export const useAppStore = create<AppState>((set) => ({
       prompts: state.prompts.filter((p) => p.id !== id),
     })),
 
+  setRecentConnections: (connections) =>
+    set(() => ({
+      recentConnections: dedupeConnections(connections),
+    })),
+
   addConnection: (conn) =>
     set((state) => ({
-      recentConnections: [conn, ...state.recentConnections].slice(0, 200),
+      recentConnections: dedupeConnections([conn, ...state.recentConnections]),
     })),
 
   addNodeOnline: (addr) =>
@@ -132,7 +168,4 @@ export const useAppStore = create<AppState>((set) => ({
       s.delete(addr);
       return { nodesOnline: s };
     }),
-
-  setUpdateAvailable: (available, version) =>
-    set({ updateAvailable: available, latestVersion: version }),
 }));
