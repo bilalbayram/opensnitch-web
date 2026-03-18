@@ -63,6 +63,16 @@ func (d *Database) RUnlock() {
 }
 
 func (d *Database) migrate() error {
+	// Legacy-safe pre-migrations for older DBs
+	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN template_id INTEGER NOT NULL DEFAULT 0")
+	d.db.Exec("ALTER TABLE rules ADD COLUMN template_rule_id INTEGER NOT NULL DEFAULT 0")
+	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''")
+	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''")
+
 	schema := `
 	CREATE TABLE IF NOT EXISTS connections (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
