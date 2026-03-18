@@ -113,6 +113,39 @@ func (a *API) handleGetRouters(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (a *API) handleScanRouters(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Subnet string `json:"subnet"`
+	}
+	// Subnet is optional — auto-detect if not provided
+	readJSON(r, &req)
+
+	subnet := req.Subnet
+	if subnet == "" {
+		detected, err := router.DetectLocalSubnet()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not detect local subnet: " + err.Error()})
+			return
+		}
+		subnet = detected
+	}
+
+	results, err := router.ScanSubnet(subnet)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if results == nil {
+		results = []router.DiscoveredRouter{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"subnet":  subnet,
+		"devices": results,
+	})
+}
+
 func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 	addr := chi.URLParam(r, "addr")
 	// URL-decode: chi may pass encoded colons etc.

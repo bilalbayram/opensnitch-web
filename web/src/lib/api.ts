@@ -51,6 +51,14 @@ export interface ConnectRouterResponse {
   steps: ProvisionStep[];
 }
 
+export interface DiscoveredRouter {
+  ip: string;
+  ssh_port: number;
+  banner: string;
+  is_openwrt: boolean;
+  hostname?: string;
+}
+
 export interface ConnectionRecord {
   id: number;
   time: string;
@@ -589,6 +597,11 @@ export const api = {
     ),
 
   // Routers
+  scanRouters: (subnet?: string) =>
+    request<{ subnet: string; devices: DiscoveredRouter[] }>("/routers/scan", {
+      method: "POST",
+      body: JSON.stringify(subnet ? { subnet } : {}),
+    }),
   connectRouter: (params: ConnectRouterRequest) =>
     request<ConnectRouterResponse>("/routers/connect", {
       method: "POST",
