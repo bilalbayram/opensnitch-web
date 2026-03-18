@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"net"
@@ -225,9 +224,10 @@ func runCommand(client *ssh.Client, cmd string) (string, error) {
 }
 
 func writeRemoteFile(client *ssh.Client, path, content string) error {
-	// Base64-encode content to avoid any shell injection via heredoc delimiters
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	cmd := fmt.Sprintf("echo '%s' | base64 -d > %s", encoded, path)
+	// Use heredoc with a delimiter that won't appear in our controlled content.
+	// Single-quoted delimiter ('AGENT_EOF') prevents any shell expansion.
+	const delim = "___COLOMBO_EOF___"
+	cmd := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", path, delim, content, delim)
 	_, err := runCommand(client, cmd)
 	return err
 }
