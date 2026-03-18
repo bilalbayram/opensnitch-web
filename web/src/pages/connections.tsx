@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, type ConnectionRecord } from '@/lib/api';
 import { actionColor, truncateMiddle } from '@/lib/utils';
 import { Search, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 
 export default function ConnectionsPage() {
-  const [connections, setConnections] = useState<any[]>([]);
+  const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
@@ -95,7 +95,7 @@ export default function ConnectionsPage() {
             <th className="px-4 py-2">Rule</th>
           </tr>
         }
-        renderRow={(c: any) => (
+        renderRow={(c: ConnectionRecord) => (
           <tr key={c.id} className="border-b border-border/50 hover:bg-muted/50">
             <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{c.time}</td>
             <td className="px-4 py-2 text-xs">{c.node}</td>
@@ -107,7 +107,7 @@ export default function ConnectionsPage() {
             <td className="px-4 py-2 text-xs text-muted-foreground">{c.rule}</td>
           </tr>
         )}
-        renderCard={(c: any) => (
+        renderCard={(c: ConnectionRecord) => (
           <div key={c.id} className="bg-card border border-border rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

@@ -193,8 +193,8 @@ export default function NodesPage() {
       setNewTrustPath((prev) => ({ ...prev, [addr]: "" }));
       setNewTrustLevel((prev) => ({ ...prev, [addr]: "" }));
       fetchTrust(addr);
-    } catch (e: any) {
-      showStatus(addr, e.message || "Failed to add");
+    } catch (e: unknown) {
+      showStatus(addr, e instanceof Error ? e.message : "Failed to add");
     }
   };
 
@@ -202,8 +202,8 @@ export default function NodesPage() {
     try {
       await api.updateProcessTrust(addr, id, level);
       fetchTrust(addr);
-    } catch (e: any) {
-      showStatus(addr, e.message || "Failed to update");
+    } catch (e: unknown) {
+      showStatus(addr, e instanceof Error ? e.message : "Failed to update");
     }
   };
 
@@ -211,8 +211,8 @@ export default function NodesPage() {
     try {
       await api.deleteProcessTrust(addr, id);
       fetchTrust(addr);
-    } catch (e: any) {
-      showStatus(addr, e.message || "Failed to delete");
+    } catch (e: unknown) {
+      showStatus(addr, e instanceof Error ? e.message : "Failed to delete");
     }
   };
 
@@ -261,16 +261,17 @@ export default function NodesPage() {
         });
         fetchNodes(true);
       }, 2000);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // Try to parse steps from the error response body
+      const err = e as Error & Record<string, unknown>;
       let errorSteps: ProvisionStep[] | null = null;
-      if (e.steps) {
-        errorSteps = e.steps;
+      if (err.steps) {
+        errorSteps = err.steps as ProvisionStep[];
       }
       if (errorSteps) {
         setConnectSteps(errorSteps);
       }
-      setConnectError(e.message || "Connection failed");
+      setConnectError(err.message || "Connection failed");
       setConnecting(false);
     }
   };
@@ -283,8 +284,8 @@ export default function NodesPage() {
       setDisconnectPass("");
       showStatus(addr, "Router disconnected");
       fetchNodes(true);
-    } catch (e: any) {
-      showStatus(addr, e.message || "Disconnect failed");
+    } catch (e: unknown) {
+      showStatus(addr, e instanceof Error ? e.message : "Disconnect failed");
     }
   };
 
