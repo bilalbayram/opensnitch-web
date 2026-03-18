@@ -1,18 +1,8 @@
 import { useEffect, useState } from 'react';
+import type { BlocklistRecord } from '@/lib/api';
 import { api } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
 import { ShieldBan, RefreshCw, Trash2, Plus, X } from 'lucide-react';
-
-interface Blocklist {
-  id: number;
-  name: string;
-  url: string;
-  category: string;
-  description: string;
-  enabled: boolean;
-  domain_count: number;
-  last_synced: string;
-}
 
 const categoryColors: Record<string, string> = {
   ads: 'bg-orange-500/10 text-orange-500',
@@ -21,7 +11,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export default function BlocklistsPage() {
-  const [lists, setLists] = useState<Blocklist[]>([]);
+  const [lists, setLists] = useState<BlocklistRecord[]>([]);
   const [syncing, setSyncing] = useState<Set<number>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');

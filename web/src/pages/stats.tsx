@@ -371,7 +371,7 @@ function TopNView({ table }: { table: string }) {
 
   useEffect(() => {
     if (!table) return;
-    const fetch = () => api.getStatsByTable(table, 100).then((d) => setData((d || []) as TopNRecord[])).catch(console.error);
+    const fetch = () => api.getStatsByTable(table, 100).then((d) => setData(d || [])).catch(console.error);
     fetch();
     const interval = setInterval(fetch, 10000);
     return () => clearInterval(interval);

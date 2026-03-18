@@ -243,6 +243,7 @@ export interface BlocklistRecord {
   name: string;
   url: string;
   category: string;
+  description: string;
   enabled: boolean;
   domain_count: number;
   last_synced: string;
@@ -401,7 +402,7 @@ export const api = {
   // Stats
   getStats: () => request<DashboardStats>("/stats"),
   getStatsByTable: (table: string, limit?: number) =>
-    request<Array<Record<string, unknown>>>(
+    request<TopNRecord[]>(
       `/stats/${table}${limit ? `?limit=${limit}` : ""}`,
     ),
   getTimeSeries: (hours?: number, bucket?: number, node?: string) => {
