@@ -12,9 +12,43 @@ export interface NodeRecord {
   last_connection: string;
   online: boolean;
   mode: string;
+  source_type: string;
   tags: string[];
   template_sync_pending: boolean;
   template_sync_error: string;
+}
+
+export interface RouterRecord {
+  id: number;
+  name: string;
+  addr: string;
+  ssh_port: number;
+  ssh_user: string;
+  lan_subnet: string;
+  status: string;
+  online: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectRouterRequest {
+  addr: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_pass: string;
+  name?: string;
+  lan_subnet?: string;
+}
+
+export interface ProvisionStep {
+  step: string;
+  status: string;
+  message: string;
+}
+
+export interface ConnectRouterResponse {
+  router: RouterRecord;
+  steps: ProvisionStep[];
 }
 
 export interface ConnectionRecord {
@@ -168,7 +202,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+    const error = new Error(err.error || res.statusText) as Error & Record<string, unknown>;
+    // Preserve extra fields (e.g. steps from router provisioning errors)
+    for (const key of Object.keys(err)) {
+      if (key !== "error") {
+        error[key] = err[key];
+      }
+    }
+    throw error;
   }
 
   const text = await res.text();
@@ -479,6 +520,22 @@ export const api = {
     request<{ status: string }>(
       `/templates/${templateId}/attachments/${attachmentId}`,
       { method: "DELETE" },
+    ),
+
+  // Routers
+  connectRouter: (params: ConnectRouterRequest) =>
+    request<ConnectRouterResponse>("/routers/connect", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+  getRouters: () => request<RouterRecord[]>("/routers"),
+  disconnectRouter: (addr: string, sshPass: string) =>
+    request<{ status: string; steps: ProvisionStep[] }>(
+      `/routers/${encodeURIComponent(addr)}/disconnect`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ssh_pass: sshPass }),
+      },
     ),
 
   // Version & Updates
