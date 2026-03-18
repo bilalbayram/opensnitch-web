@@ -153,6 +153,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Post("/api/v1/blocklists/{id}/sync", api.handleSyncBlocklist)
 
 		// Routers
+		r.Post("/api/v1/routers/scan", api.handleScanRouters)
 		r.Post("/api/v1/routers/connect", api.handleConnectRouter)
 		r.Get("/api/v1/routers", api.handleGetRouters)
 		r.Post("/api/v1/routers/{addr}/disconnect", api.handleDisconnectRouter)
