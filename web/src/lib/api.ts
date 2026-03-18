@@ -182,6 +182,72 @@ export interface TemplateRecord {
   attachments: TemplateAttachmentRecord[];
 }
 
+export interface DNSDomainRecord {
+  id: number;
+  domain: string;
+  ip: string;
+  node: string;
+  hit_count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface DNSServerRecord {
+  dst_ip: string;
+  process: string;
+  protocol: string;
+  action: string;
+  hits: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface FirewallRule {
+  Position: number;
+  Description: string;
+  Parameters: string;
+  Target: string;
+}
+
+export interface FirewallChain {
+  Name: string;
+  Family: string;
+  Hook: string;
+  Type: string;
+  Policy: string;
+  Rules: FirewallRule[];
+}
+
+export interface FirewallSystemRule {
+  Chains: FirewallChain[];
+}
+
+export interface FirewallNodeState {
+  node_addr: string;
+  running: boolean;
+  firewall: {
+    SystemRules: FirewallSystemRule[];
+  };
+}
+
+export interface BlocklistRecord {
+  id: number;
+  name: string;
+  url: string;
+  category: string;
+  enabled: boolean;
+  domain_count: number;
+  last_synced: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TopNRecord {
+  what: string;
+  hits: number;
+  node: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {
@@ -369,7 +435,7 @@ export const api = {
   },
 
   // Firewall
-  getFirewall: () => request<any[]>("/firewall"),
+  getFirewall: () => request<FirewallNodeState[]>("/firewall"),
   reloadFirewall: (node?: string) =>
     request(
       `/firewall/reload${node ? `?node=${encodeURIComponent(node)}` : ""}`,
@@ -428,19 +494,19 @@ export const api = {
   // DNS
   getDNSDomains: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<{ data: any[]; total: number }>(`/dns/domains${qs}`);
+    return request<{ data: DNSDomainRecord[]; total: number }>(`/dns/domains${qs}`);
   },
   purgeDNSDomains: () => request("/dns/domains", { method: "DELETE" }),
   getDNSServers: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<{ data: any[]; total: number }>(`/dns/servers${qs}`);
+    return request<{ data: DNSServerRecord[]; total: number }>(`/dns/servers${qs}`);
   },
   createDNSServerRules: (payload: {
     node: string;
     allowed_ips: string[];
     description?: string;
   }) =>
-    request<{ status: string; data: any[]; count: number }>(
+    request<{ status: string; data: RuleRecord[]; count: number }>(
       "/dns/server-rules",
       {
         method: "POST",
@@ -449,7 +515,7 @@ export const api = {
     ),
 
   // Blocklists
-  getBlocklists: () => request<any[]>("/blocklists"),
+  getBlocklists: () => request<BlocklistRecord[]>("/blocklists"),
   createBlocklist: (name: string, url: string, category: string) =>
     request("/blocklists", {
       method: "POST",

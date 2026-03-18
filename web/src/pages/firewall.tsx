@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, type FirewallNodeState, type FirewallSystemRule, type FirewallChain, type FirewallRule } from '@/lib/api';
 import { Flame, RefreshCw } from 'lucide-react';
 
 export default function FirewallPage() {
-  const [fwState, setFwState] = useState<any[]>([]);
+  const [fwState, setFwState] = useState<FirewallNodeState[]>([]);
 
   const fetchFirewall = () => {
     api.getFirewall().then(setFwState).catch(console.error);
@@ -50,15 +50,15 @@ export default function FirewallPage() {
             </button>
           </div>
 
-          {fw.firewall?.SystemRules?.map((sr: any, j: number) => (
+          {fw.firewall?.SystemRules?.map((sr: FirewallSystemRule, j: number) => (
             <div key={j} className="mb-3">
-              {sr.Chains?.map((chain: any, k: number) => (
+              {sr.Chains?.map((chain: FirewallChain, k: number) => (
                 <div key={k} className="bg-muted rounded-lg p-3 mb-2 overflow-hidden">
                   <div className="text-xs font-medium mb-1 break-all">
                     {chain.Name} ({chain.Family} / {chain.Hook} / {chain.Type}) — Policy: {chain.Policy}
                   </div>
                   <div className="overflow-x-auto">
-                    {chain.Rules?.map((rule: any, l: number) => (
+                    {chain.Rules?.map((rule: FirewallRule, l: number) => (
                       <div key={l} className="text-xs text-muted-foreground font-mono ml-2 whitespace-nowrap">
                         [{rule.Position}] {rule.Description || rule.Parameters} → {rule.Target}
                       </div>
