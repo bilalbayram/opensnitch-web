@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { NodeRecord } from "@/lib/api";
+import type { NodeRecord, ProvisionStep } from "@/lib/api";
 import { api } from "@/lib/api";
 import { formatUptime } from "@/lib/utils";
 import {
@@ -13,8 +13,14 @@ import {
   ChevronUp,
   Trash2,
   Plus,
+  Router,
+  Check,
+  X,
+  Loader2,
+  Unplug,
 } from "lucide-react";
 import { ResponsiveDataView } from "@/components/ui/responsive-data-view";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 
 const modeOptions = [
   {
@@ -54,6 +60,26 @@ export default function NodesPage() {
     {},
   );
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({});
+
+  // Router connection state
+  const [showConnectRouter, setShowConnectRouter] = useState(false);
+  const [routerForm, setRouterForm] = useState({
+    addr: "",
+    ssh_port: 22,
+    ssh_user: "root",
+    ssh_pass: "",
+    name: "",
+    lan_subnet: "",
+  });
+  const [connecting, setConnecting] = useState(false);
+  const [connectSteps, setConnectSteps] = useState<ProvisionStep[] | null>(
+    null,
+  );
+  const [connectError, setConnectError] = useState("");
+
+  // Router disconnect state
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [disconnectPass, setDisconnectPass] = useState("");
 
   const fetchNodes = (force?: boolean) => {
     api
@@ -214,6 +240,62 @@ export default function NodesPage() {
     }
   };
 
+  const handleConnectRouter = async () => {
+    setConnecting(true);
+    setConnectError("");
+    setConnectSteps(null);
+    try {
+      const res = await api.connectRouter(routerForm);
+      setConnectSteps(res.steps);
+      setConnecting(false);
+      setTimeout(() => {
+        setShowConnectRouter(false);
+        setConnectSteps(null);
+        setRouterForm({
+          addr: "",
+          ssh_port: 22,
+          ssh_user: "root",
+          ssh_pass: "",
+          name: "",
+          lan_subnet: "",
+        });
+        fetchNodes(true);
+      }, 2000);
+    } catch (e: any) {
+      // Try to parse steps from the error response body
+      let errorSteps: ProvisionStep[] | null = null;
+      if (e.steps) {
+        errorSteps = e.steps;
+      }
+      if (errorSteps) {
+        setConnectSteps(errorSteps);
+      }
+      setConnectError(e.message || "Connection failed");
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnectRouter = async (addr: string) => {
+    if (!disconnectPass) return;
+    try {
+      await api.disconnectRouter(addr, disconnectPass);
+      setDisconnecting(null);
+      setDisconnectPass("");
+      showStatus(addr, "Router disconnected");
+      fetchNodes(true);
+    } catch (e: any) {
+      showStatus(addr, e.message || "Disconnect failed");
+    }
+  };
+
+  const autoDetectSubnet = (ip: string) => {
+    const parts = ip.split(".");
+    if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+      return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+    }
+    return "";
+  };
+
   const trustLevelOptions = ["trusted", "untrusted", "default"] as const;
   const trustLevelColors: Record<string, string> = {
     trusted: "bg-success/10 text-success border-success/30",
@@ -223,7 +305,15 @@ export default function NodesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold">Nodes</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Nodes</h1>
+        <button
+          onClick={() => setShowConnectRouter(true)}
+          className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <Router className="h-4 w-4" /> Connect Router
+        </button>
+      </div>
 
       <div className="grid gap-4">
         {nodes.map((node) => (
@@ -249,15 +339,22 @@ export default function NodesPage() {
                   </div>
                 </div>
               </div>
-              <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  node.online
-                    ? "bg-success/10 text-success"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {node.online ? "Online" : "Offline"}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {node.source_type === "router" && (
+                  <span className="text-xs px-2 py-1 rounded-full bg-accent/10 text-accent border border-accent/20">
+                    Router
+                  </span>
+                )}
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    node.online
+                      ? "bg-success/10 text-success"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {node.online ? "Online" : "Offline"}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-4 text-sm">
@@ -281,7 +378,8 @@ export default function NodesPage() {
               </div>
             </div>
 
-            {/* Mode selector */}
+            {/* Mode selector — only for OpenSnitch nodes */}
+            {node.source_type !== "router" && (
             <div className="mt-4 flex flex-wrap items-center gap-2 md:gap-3">
               <span className="text-xs text-muted-foreground">Mode:</span>
               <div className="flex flex-wrap gap-1">
@@ -304,7 +402,48 @@ export default function NodesPage() {
                   </button>
                 ))}
               </div>
-              {status[node.addr] && (
+            </div>
+            )}
+
+            {/* Router disconnect */}
+            {node.source_type === "router" && (
+              <div className="mt-4">
+                {disconnecting === node.addr ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      placeholder="SSH password to disconnect"
+                      value={disconnectPass}
+                      onChange={(e) => setDisconnectPass(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleDisconnectRouter(node.addr)}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:border-destructive"
+                    />
+                    <button
+                      onClick={() => handleDisconnectRouter(node.addr)}
+                      className="flex items-center gap-1 text-xs px-3 py-2 rounded-lg bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20"
+                    >
+                      <Unplug className="h-3 w-3" /> Confirm
+                    </button>
+                    <button
+                      onClick={() => { setDisconnecting(null); setDisconnectPass(""); }}
+                      className="text-xs px-3 py-2 rounded-lg bg-muted border border-border hover:bg-muted/80"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDisconnecting(node.addr)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-muted hover:bg-muted/80 border border-border text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Unplug className="h-3 w-3" /> Disconnect Router
+                  </button>
+                )}
+              </div>
+            )}
+
+            {status[node.addr] && (
+              <div className="mt-2">
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full ${
                     status[node.addr].includes("fail") ||
@@ -315,8 +454,8 @@ export default function NodesPage() {
                 >
                   {status[node.addr]}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="mt-4 rounded-xl border border-border bg-muted/30 p-4">
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -380,7 +519,7 @@ export default function NodesPage() {
               </div>
             </div>
 
-            {node.online && (
+            {node.online && node.source_type !== "router" && (
               <div className="flex flex-wrap gap-2 mt-4">
                 <button
                   onClick={() => handleAction(node.addr, "enable-interception")}
@@ -413,8 +552,8 @@ export default function NodesPage() {
               </div>
             )}
 
-            {/* Trust List */}
-            <div className="mt-4 border-t border-border pt-4">
+            {/* Trust List — only for OpenSnitch nodes */}
+            {node.source_type !== "router" && <div className="mt-4 border-t border-border pt-4">
               <button
                 onClick={() => toggleTrustExpand(node.addr)}
                 className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors w-full py-1"
@@ -592,16 +731,180 @@ export default function NodesPage() {
                   )}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         ))}
         {nodes.length === 0 && (
           <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">
             No nodes found. Configure an OpenSnitch daemon to connect to this
-            server.
+            server, or connect a router.
           </div>
         )}
       </div>
+
+      {/* Connect Router BottomSheet */}
+      <BottomSheet
+        open={showConnectRouter}
+        onClose={() => {
+          if (!connecting) {
+            setShowConnectRouter(false);
+            setConnectError("");
+            setConnectSteps(null);
+          }
+        }}
+        title="Connect Router"
+        stickyFooter={
+          !connectSteps && (
+            <button
+              onClick={handleConnectRouter}
+              disabled={connecting || !routerForm.addr || !routerForm.ssh_pass}
+              className="w-full flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {connecting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Connecting...
+                </>
+              ) : (
+                <>
+                  <Router className="h-4 w-4" /> Connect
+                </>
+              )}
+            </button>
+          )
+        }
+      >
+        <div className="p-5 space-y-4">
+          {connectSteps ? (
+            // Show provisioning steps
+            <div className="space-y-3">
+              {connectSteps.map((step, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  {step.status === "done" ? (
+                    <div className="p-1 rounded-full bg-success/10">
+                      <Check className="h-4 w-4 text-success" />
+                    </div>
+                  ) : (
+                    <div className="p-1 rounded-full bg-destructive/10">
+                      <X className="h-4 w-4 text-destructive" />
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-sm font-medium capitalize">{step.step}</div>
+                    <div className="text-xs text-muted-foreground">{step.message}</div>
+                  </div>
+                </div>
+              ))}
+              {connectSteps.every((s) => s.status === "done") && (
+                <div className="mt-4 text-center text-sm text-success">
+                  Router connected successfully!
+                </div>
+              )}
+            </div>
+          ) : (
+            // Show form
+            <>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Router IP Address</label>
+                <input
+                  type="text"
+                  placeholder="192.168.1.1"
+                  value={routerForm.addr}
+                  onChange={(e) => {
+                    const addr = e.target.value;
+                    setRouterForm((prev) => ({
+                      ...prev,
+                      addr,
+                      lan_subnet: prev.lan_subnet || autoDetectSubnet(addr),
+                    }));
+                  }}
+                  onBlur={() => {
+                    if (routerForm.addr && !routerForm.lan_subnet) {
+                      setRouterForm((prev) => ({
+                        ...prev,
+                        lan_subnet: autoDetectSubnet(prev.addr),
+                      }));
+                    }
+                  }}
+                  className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">SSH Port</label>
+                  <input
+                    type="number"
+                    value={routerForm.ssh_port}
+                    onChange={(e) =>
+                      setRouterForm((prev) => ({ ...prev, ssh_port: parseInt(e.target.value) || 22 }))
+                    }
+                    className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">SSH Username</label>
+                  <input
+                    type="text"
+                    value={routerForm.ssh_user}
+                    onChange={(e) =>
+                      setRouterForm((prev) => ({ ...prev, ssh_user: e.target.value }))
+                    }
+                    className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">SSH Password</label>
+                <input
+                  type="password"
+                  placeholder="Router password"
+                  value={routerForm.ssh_pass}
+                  onChange={(e) =>
+                    setRouterForm((prev) => ({ ...prev, ssh_pass: e.target.value }))
+                  }
+                  className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Router Name <span className="text-muted-foreground/60">(optional)</span></label>
+                <input
+                  type="text"
+                  placeholder={routerForm.addr || "my-router"}
+                  value={routerForm.name}
+                  onChange={(e) =>
+                    setRouterForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">LAN Subnet <span className="text-muted-foreground/60">(auto-detected)</span></label>
+                <input
+                  type="text"
+                  placeholder="192.168.1.0/24"
+                  value={routerForm.lan_subnet}
+                  onChange={(e) =>
+                    setRouterForm((prev) => ({ ...prev, lan_subnet: e.target.value }))
+                  }
+                  className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Only outbound traffic from this subnet to the internet will be tracked.
+                </p>
+              </div>
+
+              {connectError && (
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+                  {connectError}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </BottomSheet>
     </div>
   );
 }

@@ -63,16 +63,6 @@ func (d *Database) RUnlock() {
 }
 
 func (d *Database) migrate() error {
-	// Legacy-safe pre-migrations for older DBs
-	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN template_id INTEGER NOT NULL DEFAULT 0")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN template_rule_id INTEGER NOT NULL DEFAULT 0")
-	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''")
-
 	schema := `
 	CREATE TABLE IF NOT EXISTS connections (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -340,6 +330,19 @@ func (d *Database) migrate() error {
 		lon REAL NOT NULL DEFAULT 0,
 		cached_at TEXT NOT NULL DEFAULT ''
 	);
+
+	CREATE TABLE IF NOT EXISTS routers (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL DEFAULT '',
+		addr TEXT NOT NULL UNIQUE,
+		ssh_port INTEGER NOT NULL DEFAULT 22,
+		ssh_user TEXT NOT NULL DEFAULT 'root',
+		api_key TEXT NOT NULL UNIQUE,
+		lan_subnet TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
 	`
 
 	_, err := d.db.Exec(schema)
@@ -347,8 +350,11 @@ func (d *Database) migrate() error {
 		return fmt.Errorf("execute schema: %w", err)
 	}
 
-	// Add mode column to nodes (safe: ignores error if already exists)
+	// Legacy-safe column additions for databases created before these columns
+	// existed. Must run AFTER CREATE TABLE so tables exist on fresh installs.
+	// Errors are ignored — column already exists is expected on newer DBs.
 	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
+	d.db.Exec("ALTER TABLE nodes ADD COLUMN source_type TEXT NOT NULL DEFAULT 'opensnitch'")
 	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
 	d.db.Exec("ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
 	d.db.Exec("ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'")
