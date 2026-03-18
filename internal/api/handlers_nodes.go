@@ -41,6 +41,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		LastConn            string   `json:"last_connection"`
 		Online              bool     `json:"online"`
 		Mode                string   `json:"mode"`
+		SourceType          string   `json:"source_type"`
 		Tags                []string `json:"tags"`
 		TemplateSyncPending bool     `json:"template_sync_pending"`
 		TemplateSyncError   string   `json:"template_sync_error"`
@@ -58,6 +59,10 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			tags = []string{}
 		}
 		syncState := syncStates[n.Addr]
+		sourceType := n.SourceType
+		if sourceType == "" {
+			sourceType = "opensnitch"
+		}
 		result[i] = enrichedNode{
 			Addr:                n.Addr,
 			Hostname:            n.Hostname,
@@ -70,6 +75,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			LastConn:            n.LastConn,
 			Online:              online,
 			Mode:                n.Mode,
+			SourceType:          sourceType,
 			Tags:                tags,
 			TemplateSyncPending: syncState.Pending,
 			TemplateSyncError:   syncState.Error,
@@ -100,6 +106,10 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sourceType := node.SourceType
+	if sourceType == "" {
+		sourceType = "opensnitch"
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"addr":                  node.Addr,
 		"hostname":              node.Hostname,
@@ -112,6 +122,7 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		"status":                node.Status,
 		"last_connection":       node.LastConn,
 		"mode":                  node.Mode,
+		"source_type":           sourceType,
 		"tags":                  tags,
 		"template_sync_pending": syncState.Pending,
 		"template_sync_error":   syncState.Error,
