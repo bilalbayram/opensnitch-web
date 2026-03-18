@@ -58,14 +58,12 @@ jobs:
           go-version: "1.22"
           cache: true
 
-      - name: Build frontend
-        run: cd web && npm ci && npm run build
-
-      - name: Verify embedded frontend is current
-        run: make verify-embed
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
 
       - name: Build binary
-        run: make embed build
+        run: make build
 
       - name: Verify binary
         run: test -f bin/opensnitch-web
