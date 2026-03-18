@@ -2,6 +2,7 @@ bin/
 /opensnitch-web
 web/node_modules/
 web/dist/
+cmd/opensnitch-web/frontend/
 *.db
 *.db-wal
 *.db-shm
