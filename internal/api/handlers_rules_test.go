@@ -19,6 +19,7 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/router"
 	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
 	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
@@ -54,6 +55,7 @@ func newAPITestEnv(t *testing.T) *apiTestEnv {
 		hub:          env.hub,
 		prompter:     env.prompter,
 		templateSync: templatesync.New(env.database, env.nodes),
+		routerProv:   router.NewProvisioner(env.database),
 	}
 
 	t.Cleanup(func() {

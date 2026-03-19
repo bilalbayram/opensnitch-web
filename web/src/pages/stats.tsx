@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, type TopNRecord } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
 import {
   BarChart, Bar, AreaChart, Area,
@@ -267,8 +267,14 @@ function GeoView() {
   const [data, setData] = useState<GeoEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  // Reset loading state synchronously when hours changes
+  const [prevHours, setPrevHours] = useState(hours);
+  if (hours !== prevHours) {
+    setPrevHours(hours);
     setLoading(true);
+  }
+
+  useEffect(() => {
     const fetch = () => api.getGeoSummary(hours, 50).then((d) => { setData(d || []); setLoading(false); }).catch(() => setLoading(false));
     fetch();
     const interval = setInterval(fetch, 60000);
@@ -361,7 +367,7 @@ function GeoView() {
 
 function TopNView({ table }: { table: string }) {
   const isMobile = useIsMobile();
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<TopNRecord[]>([]);
 
   useEffect(() => {
     if (!table) return;
