@@ -39,7 +39,7 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: arm64
-          - os: macos-13
+          - os: macos-latest
             goos: darwin
             goarch: amd64
           - os: macos-latest
