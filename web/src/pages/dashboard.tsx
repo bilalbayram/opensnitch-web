@@ -1,24 +1,241 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { api, type ConnectionRecord, type DashboardStats } from '@/lib/api';
 import { useAppStore, type ConnectionEvent } from '@/stores/app-store';
-import { formatNumber, actionColor, truncateMiddle } from '@/lib/utils';
-import { Server, Network, ShieldCheck, ShieldX, Eye, Activity, type LucideIcon } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
+import { formatNumber, cn } from '@/lib/utils';
+import { ShieldCheck, ShieldX, ShieldAlert, Server } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import type { GeoPoint } from '@/components/ui/geo-map';
 
-function StatCard({ icon: Icon, label, value, color }: { icon: LucideIcon; label: string; value: string | number; color?: string }) {
+const GeoMap = lazy(() => import('@/components/ui/geo-map').then((m) => ({ default: m.GeoMap })));
+
+type StatEntry = { what: string; hits: number; node: string };
+
+// ─── Process List (left panel) ──────────────────────────────────────
+function ProcessList({ processes }: { processes: StatEntry[] }) {
+  const maxHits = processes[0]?.hits || 1;
+
   return (
-    <div className="bg-card border border-border rounded-xl p-3 md:p-4">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1 md:mb-2">
-        <Icon className={`h-4 w-4 ${color || ''}`} />
-        <span className="text-xs">{label}</span>
+    <div className="hidden lg:flex flex-col w-56 xl:w-64 shrink-0 bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
+        <h2 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Processes</h2>
+        <span className="text-[10px] text-muted-foreground">{processes.length}</span>
       </div>
-      <div className="text-xl md:text-2xl font-bold">{value}</div>
+      <div className="flex-1 overflow-y-auto">
+        {processes.map((p, i) => {
+          const name = p.what.split('/').pop() || p.what;
+          const pct = (p.hits / maxHits) * 100;
+          return (
+            <div key={i} className="relative flex items-center gap-2 px-3 py-[5px] hover:bg-muted/30 transition-colors">
+              <div
+                className="absolute inset-y-0 left-0 bg-primary/[0.06]"
+                style={{ width: `${pct}%` }}
+              />
+              <div className="relative flex items-center gap-2 w-full min-w-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary/50 shrink-0" />
+                <span className="text-[11px] font-mono truncate flex-1" title={p.what}>{name}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{formatNumber(p.hits)}</span>
+              </div>
+            </div>
+          );
+        })}
+        {processes.length === 0 && (
+          <div className="px-3 py-8 text-xs text-muted-foreground text-center">No data</div>
+        )}
+      </div>
     </div>
   );
 }
 
-function mapConnectionRecord(conn: ConnectionRecord) {
+// ─── Summary Panel (right panel) ────────────────────────────────────
+function SummaryPanel({
+  stats,
+  nodesOnline,
+  topProcesses,
+  topHosts,
+}: {
+  stats: DashboardStats | null;
+  nodesOnline: number;
+  topProcesses: StatEntry[];
+  topHosts: StatEntry[];
+}) {
+  const accepted = stats?.accepted ?? 0;
+  const dropped = stats?.dropped ?? 0;
+  const connections = stats?.connections ?? 0;
+
+  return (
+    <div className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-card border border-border rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border">
+        <h2 className="text-sm font-semibold">Summary</h2>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          {topProcesses.length} processes &middot; {topHosts.length} domains
+        </p>
+      </div>
+
+      {/* Connection stats */}
+      <div className="px-4 py-3 space-y-2.5 border-b border-border">
+        <StatRow icon={Server} label="Nodes online" value={nodesOnline} color="text-success" />
+        <StatRow icon={ShieldCheck} label="Allowed" value={formatNumber(accepted)} color="text-success" />
+        <StatRow icon={ShieldX} label="Denied" value={formatNumber(dropped)} color="text-destructive" />
+        <StatRow icon={ShieldAlert} label="Total" value={formatNumber(connections)} />
+
+        {/* Allow/deny ratio bar */}
+        {(accepted + dropped) > 0 && (
+          <div className="pt-1">
+            <div className="flex h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="bg-success h-full" style={{ width: `${(accepted / (accepted + dropped)) * 100}%` }} />
+              <div className="bg-destructive h-full" style={{ width: `${(dropped / (accepted + dropped)) * 100}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Top Processes */}
+      <div className="px-4 py-3 border-b border-border overflow-y-auto" style={{ maxHeight: '30%' }}>
+        <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Top Processes</h3>
+        {topProcesses.slice(0, 6).map((p, i) => (
+          <div key={i} className="flex items-center justify-between py-0.5">
+            <span className="text-xs font-mono truncate max-w-[140px]" title={p.what}>
+              {p.what.split('/').pop() || p.what}
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">{formatNumber(p.hits)}</span>
+          </div>
+        ))}
+        {topProcesses.length === 0 && <Empty />}
+      </div>
+
+      {/* Top Domains */}
+      <div className="px-4 py-3 flex-1 overflow-y-auto">
+        <h3 className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Top Domains</h3>
+        {topHosts.slice(0, 6).map((h, i) => (
+          <div key={i} className="flex items-center justify-between py-0.5">
+            <span className="text-xs truncate max-w-[140px]" title={h.what}>{h.what}</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">{formatNumber(h.hits)}</span>
+          </div>
+        ))}
+        {topHosts.length === 0 && <Empty />}
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ icon: Icon, label, value, color }: { icon: typeof Server; label: string; value: string | number; color?: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <Icon className={cn('h-3.5 w-3.5', color || 'text-muted-foreground')} />
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn('ml-auto font-medium tabular-nums', color)}>{value}</span>
+    </div>
+  );
+}
+
+function Empty() {
+  return <div className="text-[10px] text-muted-foreground py-1">&mdash;</div>;
+}
+
+// ─── Traffic Timeline (compact sparkline) ───────────────────────────
+function TrafficTimeline({ data }: { data: Array<{ time: string; allow: number; deny: number }> }) {
+  if (data.length === 0) return null;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 shrink-0">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Traffic (1h)</span>
+        <div className="flex items-center gap-3">
+          <Legend color="bg-success" label="Allow" />
+          <Legend color="bg-destructive" label="Deny" />
+        </div>
+      </div>
+      <div className="h-[64px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+            <XAxis dataKey="time" hide />
+            <YAxis hide />
+            <Area type="monotone" dataKey="allow" stroke="#22c55e" fill="#22c55e" fillOpacity={0.08} strokeWidth={1.5} />
+            <Area type="monotone" dataKey="deny" stroke="#ef4444" fill="#ef4444" fillOpacity={0.08} strokeWidth={1.5} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <span className={cn('w-1.5 h-1.5 rounded-full', color)} />
+      {label}
+    </span>
+  );
+}
+
+// ─── Live Connections Feed ──────────────────────────────────────────
+function LiveConnections({ connections }: { connections: ConnectionEvent[] }) {
+  return (
+    <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
+      <div className="px-3 py-2 border-b border-border shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Live Connections</span>
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-50" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success" />
+          </span>
+        </div>
+        <span className="text-[10px] text-muted-foreground">{connections.length}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {connections.map((conn, i) => (
+          <div
+            key={`${conn.time}-${conn.dst_ip}-${conn.process}-${i}`}
+            className="flex items-center gap-2 px-3 py-[5px] border-b border-border/20 hover:bg-muted/20 transition-colors text-[11px]"
+          >
+            <span className={cn(
+              'w-1.5 h-1.5 rounded-full shrink-0',
+              conn.action === 'allow' ? 'bg-success' : conn.action === 'deny' ? 'bg-destructive' : 'bg-warning',
+            )} />
+            <span className="font-mono truncate w-20 shrink-0 text-foreground/80" title={conn.process}>
+              {conn.process?.split('/').pop() || '?'}
+            </span>
+            <span className="text-muted-foreground/40 shrink-0">&rarr;</span>
+            <span className="truncate flex-1" title={conn.dst_host || conn.dst_ip}>
+              {conn.dst_host || conn.dst_ip}
+            </span>
+            <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{conn.dst_port}</span>
+            <span className="text-[10px] text-muted-foreground/40 uppercase shrink-0 w-7 text-right">{conn.protocol}</span>
+          </div>
+        ))}
+        {connections.length === 0 && (
+          <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+            Waiting for connections&hellip;
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile Summary (compact) ───────────────────────────────────────
+function MobileSummary({ stats }: { stats: DashboardStats | null }) {
+  return (
+    <div className="lg:hidden grid grid-cols-3 gap-2">
+      <MiniStat label="Connections" value={formatNumber(stats?.connections ?? 0)} />
+      <MiniStat label="Allowed" value={formatNumber(stats?.accepted ?? 0)} color="text-success" />
+      <MiniStat label="Denied" value={formatNumber(stats?.dropped ?? 0)} color="text-destructive" />
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="bg-card border border-border rounded-lg p-2 text-center">
+      <div className={cn('text-lg font-bold tabular-nums', color)}>{value}</div>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ─────────────────────────────────────────────────
+function mapConnectionRecord(conn: ConnectionRecord): ConnectionEvent {
   return {
     time: conn.time,
     node: conn.node,
@@ -38,156 +255,103 @@ function mapConnectionRecord(conn: ConnectionRecord) {
 }
 
 export default function DashboardPage() {
-  const { stats, nodesOnline, recentConnections, setRecentConnections } = useAppStore();
+  const { stats: nodeStats, nodesOnline, recentConnections, setRecentConnections } = useAppStore();
   const [generalStats, setGeneralStats] = useState<DashboardStats | null>(null);
-  const [recentFetchPending, setRecentFetchPending] = useState(true);
+  const [geoData, setGeoData] = useState<GeoPoint[]>([]);
+  const [topProcesses, setTopProcesses] = useState<StatEntry[]>([]);
+  const [topHosts, setTopHosts] = useState<StatEntry[]>([]);
+  const [trafficData, setTrafficData] = useState<Array<{ time: string; allow: number; deny: number }>>([]);
 
+  // Fetch dashboard stats
   useEffect(() => {
-    api.getStats().then(setGeneralStats).catch(console.error);
-    const interval = setInterval(() => {
-      api.getStats().then(setGeneralStats).catch(console.error);
-    }, 5000);
-    return () => clearInterval(interval);
+    const load = () => api.getStats().then(setGeneralStats).catch(console.error);
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
   }, []);
 
+  // Seed recent connections from API on first load
   useEffect(() => {
-    let cancelled = false;
-
-    if (recentConnections.length > 0) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    api.getConnections({ limit: '20', offset: '0' })
+    if (recentConnections.length > 0) return;
+    api.getConnections({ limit: '50', offset: '0' })
       .then((res) => {
-        if (cancelled) {
-          return;
-        }
         if (useAppStore.getState().recentConnections.length === 0) {
           setRecentConnections((res.data || []).map(mapConnectionRecord));
         }
       })
-      .catch(console.error)
-      .finally(() => {
-        if (!cancelled) {
-          setRecentFetchPending(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .catch(console.error);
   }, [recentConnections.length, setRecentConnections]);
 
-  // Aggregate stats from all nodes
-  let totalConns = 0, totalDropped = 0, totalAccepted = 0, totalRules = 0;
-  const nodeEntries = Object.values(stats);
-  for (const s of nodeEntries) {
-    totalConns += s.connections || 0;
-    totalDropped += s.dropped || 0;
-    totalAccepted += s.accepted || 0;
-    totalRules += s.rules || 0;
-  }
-
-  // Server-side traffic data (last 1 hour)
-  const [trafficData, setTrafficData] = useState<Array<{ time: string; allow: number; deny: number }>>([]);
+  // Geo data for map
   useEffect(() => {
-    const loadTraffic = () =>
-      api.getTimeSeries(1).then((d) =>
-        setTrafficData((d || []).map((p) => ({ time: p.bucket.slice(11, 16), allow: p.allow, deny: p.deny })))
-      ).catch(console.error);
-    loadTraffic();
-    const interval = setInterval(loadTraffic, 30000);
-    return () => clearInterval(interval);
+    const load = () => api.getGeoSummary(24, 100).then((d) => setGeoData(d || [])).catch(console.error);
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
   }, []);
 
-  const recent = recentConnections.slice(0, 20);
-  const loadingRecent = recentConnections.length === 0 && recentFetchPending;
-  const recentEmptyMessage = loadingRecent ? 'Loading recent connections...' : 'No recent connections yet';
+  // Top processes + hosts for sidebar and summary
+  useEffect(() => {
+    const load = () => {
+      api.getStatsByTable('processes', 50).then((d) => setTopProcesses((d || []) as StatEntry[])).catch(console.error);
+      api.getStatsByTable('hosts', 50).then((d) => setTopHosts((d || []) as StatEntry[])).catch(console.error);
+    };
+    load();
+    const id = setInterval(load, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Traffic timeline
+  useEffect(() => {
+    const load = () =>
+      api.getTimeSeries(1).then((d) =>
+        setTrafficData((d || []).map((p) => ({ time: p.bucket.slice(11, 16), allow: p.allow, deny: p.deny }))),
+      ).catch(console.error);
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Merge API process data with live WebSocket stats
+  const processesForSidebar = useMemo(() => {
+    if (topProcesses.length > 0) return topProcesses;
+    const merged: Record<string, number> = {};
+    for (const s of Object.values(nodeStats)) {
+      for (const [exe, count] of Object.entries(s.by_executable || {})) {
+        merged[exe] = (merged[exe] || 0) + count;
+      }
+    }
+    return Object.entries(merged)
+      .map(([what, hits]) => ({ what, hits, node: '' }))
+      .sort((a, b) => b.hits - a.hits);
+  }, [topProcesses, nodeStats]);
+
+  const recent = recentConnections.slice(0, 50);
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <h1 className="text-xl font-bold">Dashboard</h1>
+    <div className="flex flex-col gap-3 lg:flex-row lg:h-[calc(100vh-6rem)] lg:overflow-hidden">
+      {/* Mobile: compact stats */}
+      <MobileSummary stats={generalStats} />
 
-      {/* Status cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
-        <StatCard icon={Server} label="Nodes Online" value={generalStats?.nodes_online ?? nodesOnline.size} color="text-success" />
-        <StatCard icon={Network} label="Connections" value={formatNumber(generalStats?.connections ?? totalConns)} />
-        <StatCard icon={ShieldCheck} label="Accepted" value={formatNumber(generalStats?.accepted ?? totalAccepted)} color="text-success" />
-        <StatCard icon={ShieldX} label="Dropped" value={formatNumber(generalStats?.dropped ?? totalDropped)} color="text-destructive" />
-        <StatCard icon={Eye} label="Rules" value={formatNumber(generalStats?.rules ?? totalRules)} color="text-primary" />
-        <StatCard icon={Activity} label="WS Clients" value={generalStats?.ws_clients ?? 0} color="text-accent" />
+      {/* Left: Process List */}
+      <ProcessList processes={processesForSidebar} />
+
+      {/* Center: Map + Timeline + Live Feed */}
+      <div className="flex-1 flex flex-col gap-3 min-w-0 lg:min-h-0 lg:overflow-hidden">
+        <Suspense fallback={<div className="shrink-0 rounded-xl border border-border bg-[#080a12]" style={{ height: '40vh', minHeight: 200 }} />}>
+          <GeoMap geoData={geoData} className="shrink-0" />
+        </Suspense>
+        <TrafficTimeline data={trafficData} />
+        <LiveConnections connections={recent} />
       </div>
 
-      {/* Traffic chart — shorter on mobile */}
-      {trafficData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-4">
-          <h2 className="text-sm font-medium mb-4">Traffic</h2>
-          <div className="h-[180px] md:h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trafficData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#a1a1aa' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#a1a1aa' }} />
-                <Tooltip contentStyle={{ background: '#111118', border: '1px solid #27272a', borderRadius: 8 }} />
-                <Area type="monotone" dataKey="allow" stroke="#22c55e" fill="#22c55e" fillOpacity={0.1} />
-                <Area type="monotone" dataKey="deny" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {/* Recent connections */}
-      <div>
-        <h2 className="text-sm font-medium mb-3">Recent Connections</h2>
-        <ResponsiveDataView
-          data={recent}
-          columns={7}
-          emptyMessage={recentEmptyMessage}
-          tableHead={
-            <tr className="border-b border-border text-left text-xs text-muted-foreground">
-              <th className="px-4 py-2">Time</th>
-              <th className="px-4 py-2">Action</th>
-              <th className="px-4 py-2">Process</th>
-              <th className="px-4 py-2">Destination</th>
-              <th className="px-4 py-2">Port</th>
-              <th className="px-4 py-2">Protocol</th>
-              <th className="px-4 py-2">Rule</th>
-            </tr>
-          }
-          renderRow={(conn: ConnectionEvent, i: number) => (
-            <tr key={i} className="border-b border-border/50 hover:bg-muted/50">
-              <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">{conn.time}</td>
-              <td className={`px-4 py-2 font-medium ${actionColor(conn.action)}`}>{conn.action}</td>
-              <td className="px-4 py-2 font-mono text-xs max-w-48 truncate">{conn.process}</td>
-              <td className="px-4 py-2 text-xs">{conn.dst_host || conn.dst_ip}</td>
-              <td className="px-4 py-2 text-xs">{conn.dst_port}</td>
-              <td className="px-4 py-2 text-xs uppercase">{conn.protocol}</td>
-              <td className="px-4 py-2 text-xs text-muted-foreground">{conn.rule}</td>
-            </tr>
-          )}
-          renderCard={(conn: ConnectionEvent, i: number) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-3 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  conn.action === 'allow' ? 'bg-success/15 text-success'
-                    : conn.action === 'deny' ? 'bg-destructive/15 text-destructive'
-                    : 'bg-warning/15 text-warning'
-                }`}>
-                  {conn.action}
-                </span>
-                <span className="text-[10px] text-muted-foreground">{conn.time}</span>
-              </div>
-              <div className="font-mono text-xs break-all">{truncateMiddle(conn.process || '', 50)}</div>
-              <div className="text-xs text-muted-foreground">
-                → {conn.dst_host || conn.dst_ip}:{conn.dst_port} <span className="uppercase">{conn.protocol}</span>
-              </div>
-            </div>
-          )}
-        />
-      </div>
+      {/* Right: Summary Panel */}
+      <SummaryPanel
+        stats={generalStats}
+        nodesOnline={generalStats?.nodes_online ?? nodesOnline.size}
+        topProcesses={processesForSidebar}
+        topHosts={topHosts}
+      />
     </div>
   );
 }
