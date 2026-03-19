@@ -12,9 +12,11 @@ import {
   Settings,
   Layers,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { AppLogo } from "@/components/app-logo";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app-store";
+import { api } from "@/lib/api";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -39,6 +41,13 @@ const navItems = [
 export function Sidebar() {
   const { nodesOnline, prompts } = useAppStore();
   const { pathname } = useLocation();
+
+  const { data: nodes } = useQuery({
+    queryKey: ["nodes"],
+    queryFn: api.getNodes,
+    refetchInterval: 10_000,
+  });
+  const onlineCount = nodes?.filter((n) => n.online).length ?? nodesOnline.size;
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 hidden md:flex flex-col z-40 bg-sidebar border-r border-border w-16 lg:w-56 transition-[width] duration-200">
@@ -83,9 +92,9 @@ export function Sidebar() {
             </span>
 
             {/* Badges */}
-            {item.label === "Nodes" && nodesOnline.size > 0 && (
+            {item.label === "Nodes" && onlineCount > 0 && (
               <span className="ml-auto text-xs bg-success/20 text-success px-1.5 py-0.5 rounded-full hidden lg:inline">
-                {nodesOnline.size}
+                {onlineCount}
               </span>
             )}
             {item.label === "Alerts" && prompts.length > 0 && (
@@ -104,10 +113,10 @@ export function Sidebar() {
       {/* Footer */}
       <div className="px-3 lg:px-4 py-3 border-t border-border text-xs text-muted-foreground">
         <span className="hidden lg:inline">
-          {nodesOnline.size} node{nodesOnline.size !== 1 ? "s" : ""} online
+          {onlineCount} node{onlineCount !== 1 ? "s" : ""} online
         </span>
         <span className="lg:hidden text-center block text-[10px]">
-          {nodesOnline.size}
+          {onlineCount}
         </span>
       </div>
     </aside>
