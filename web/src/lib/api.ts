@@ -110,6 +110,9 @@ export interface DashboardStats {
   dropped: number;
   rules: number;
   ws_clients: number;
+  total: number;
+  allowed: number;
+  denied: number;
 }
 
 export interface RuleOperator {

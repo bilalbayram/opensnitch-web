@@ -18,6 +18,12 @@ type TimeSeriesPoint struct {
 	Total  int64  `json:"total"`
 }
 
+type ConnectionSummary struct {
+	Total   int64 `json:"total"`
+	Allowed int64 `json:"allowed"`
+	Denied  int64 `json:"denied"`
+}
+
 func (d *Database) UpsertStat(table, what, node string, hits int64) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -65,6 +71,21 @@ func (d *Database) GetStats(table string, limit int) ([]StatEntry, error) {
 		return nil, err
 	}
 	return entries, nil
+}
+
+func (d *Database) GetConnectionSummary() (ConnectionSummary, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	var summary ConnectionSummary
+	err := d.db.QueryRow(`
+		SELECT
+			COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN action = 'allow' THEN 1 ELSE 0 END), 0) AS allowed,
+			COALESCE(SUM(CASE WHEN action IN ('deny', 'reject') THEN 1 ELSE 0 END), 0) AS denied
+		FROM connections
+	`).Scan(&summary.Total, &summary.Allowed, &summary.Denied)
+	return summary, err
 }
 
 func (d *Database) GetConnectionTimeSeries(hours, bucketMinutes int, node string) ([]TimeSeriesPoint, error) {

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/go-chi/chi/v5"
 )
 
 func (a *API) handleGetGeneralStats(w http.ResponseWriter, r *http.Request) {
@@ -25,14 +25,23 @@ func (a *API) handleGetGeneralStats(w http.ResponseWriter, r *http.Request) {
 		totalRules += stats.Rules
 	}
 
+	summary, err := a.db.GetConnectionSummary()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"nodes_online":  a.nodes.Count(),
-		"connections":   totalConns,
-		"dropped":       totalDropped,
-		"accepted":      totalAccepted,
-		"ignored":       totalIgnored,
-		"rules":         totalRules,
-		"ws_clients":    a.hub.ClientCount(),
+		"nodes_online": a.nodes.Count(),
+		"connections":  totalConns,
+		"dropped":      totalDropped,
+		"accepted":     totalAccepted,
+		"ignored":      totalIgnored,
+		"total":        summary.Total,
+		"allowed":      summary.Allowed,
+		"denied":       summary.Denied,
+		"rules":        totalRules,
+		"ws_clients":   a.hub.ClientCount(),
 	})
 }
 
