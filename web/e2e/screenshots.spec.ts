@@ -15,12 +15,8 @@ function screenshotPath(name: string) {
   return path.join(screenshotDir, `${name}.png`);
 }
 
-test('dashboard', async ({ page }) => {
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  await expect(page.getByText('api.github.com')).toBeVisible();
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: screenshotPath('dashboard'), fullPage: true });
+test.skip('dashboard', async () => {
+  // The README dashboard image is maintained manually.
 });
 
 test('connections', async ({ page }) => {
@@ -75,7 +71,7 @@ test('templates', async ({ page }) => {
 test('alerts', async ({ page }) => {
   await page.goto('/alerts');
   await page.waitForLoadState('networkidle');
-  await expect(page.getByText('312 connections denied in the last hour on gateway-01')).toBeVisible();
+  await expect(page.getByText('312 connections denied in the last hour on gateway-01').first()).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: screenshotPath('alerts'), fullPage: true });
 });
