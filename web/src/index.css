@@ -45,6 +45,33 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
 
+/* MapLibre GL dark theme overrides */
+.maplibregl-popup-content {
+  background: var(--color-card);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--color-card); }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--color-card); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--color-card); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--color-card); }
+.maplibregl-popup-close-button { color: var(--color-muted-foreground); }
+
+.geo-popup { line-height: 1.5; }
+.geo-popup-ip { font-family: ui-monospace, monospace; font-size: 10px; color: var(--color-muted-foreground); }
+.geo-popup-hits { font-size: 10px; color: var(--color-accent); font-weight: 500; }
+
+.maplibregl-ctrl-group { background: var(--color-card) !important; border: 1px solid var(--color-border) !important; }
+.maplibregl-ctrl-group button { background-color: transparent !important; }
+.maplibregl-ctrl-group button + button { border-top: 1px solid var(--color-border) !important; }
+.maplibregl-ctrl-group button span { filter: invert(1); }
+.maplibregl-canvas { max-width: none !important; height: 100% !important; }
+
 /* Touch-friendly tap targets */
 @media (pointer: coarse) {
   button, a, select, input[type="checkbox"] {
