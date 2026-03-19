@@ -1,8 +1,9 @@
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/lib/utils';
-import { Wifi, WifiOff, LogOut, Shield } from 'lucide-react';
+import { Wifi, WifiOff, LogOut } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
+import { AppLogo } from '@/components/app-logo';
 
 export function Header() {
   const { user, wsConnected, setUser } = useAppStore();
@@ -21,7 +22,7 @@ export function Header() {
       <div className="flex items-center gap-2">
         {/* Mobile brand — shown only when sidebar is hidden */}
         <div className="flex items-center gap-2 md:hidden">
-          <Shield className="h-4 w-4 text-primary" />
+          <AppLogo className="h-4 w-4" />
           <span className="font-bold text-sm">OpenSnitch</span>
         </div>
 
