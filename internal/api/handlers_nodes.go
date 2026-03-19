@@ -3,11 +3,27 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	pb "github.com/evilsocket/opensnitch-web/proto"
 )
+
+const routerHeartbeatTTL = 60 * time.Second
+
+func routerOnlineFromLastConn(lastConn string) bool {
+	if lastConn == "" {
+		return false
+	}
+
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", lastConn, time.Local)
+	if err != nil {
+		return false
+	}
+
+	return time.Since(t) < routerHeartbeatTTL
+}
 
 func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 	nodes, err := a.db.GetNodes()
@@ -49,20 +65,27 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]enrichedNode, len(nodes))
 	for i, n := range nodes {
+		sourceType := n.SourceType
+		if sourceType == "" {
+			sourceType = "opensnitch"
+		}
 		_, online := liveNodes[n.Addr]
+		if sourceType == "router" {
+			online = routerOnlineFromLastConn(n.LastConn)
+		}
+
 		status := n.Status
 		if online {
 			status = "online"
+		} else if sourceType == "router" {
+			status = "offline"
 		}
+
 		tags := nodeTags[n.Addr]
 		if tags == nil {
 			tags = []string{}
 		}
 		syncState := syncStates[n.Addr]
-		sourceType := n.SourceType
-		if sourceType == "" {
-			sourceType = "opensnitch"
-		}
 		result[i] = enrichedNode{
 			Addr:                n.Addr,
 			Hostname:            n.Hostname,
