@@ -11,7 +11,6 @@ fi
 . "$CONFIG"
 
 BATCH_FILE="/tmp/conntrack-agent-batch"
-BATCH_COUNT=0
 MAX_BATCH=${BATCH_SIZE:-20}
 FLUSH_INTERVAL=${BATCH_INTERVAL:-5}
 
@@ -39,7 +38,8 @@ is_lan_ip() {
 }
 
 flush_batch() {
-    if [ "$BATCH_COUNT" -eq 0 ]; then
+    LINES=$(wc -l < "$BATCH_FILE" 2>/dev/null || echo 0)
+    if [ "$LINES" -le 1 ]; then
         return
     fi
 
@@ -57,11 +57,10 @@ flush_batch() {
         "$SERVER_URL/api/v1/ingest" 2>/dev/null
 
     if [ $? -ne 0 ]; then
-        logger -t conntrack-agent "POST failed, dropped $BATCH_COUNT events"
+        logger -t conntrack-agent "POST failed, dropped batch"
     fi
 
     # Reset
-    BATCH_COUNT=0
     rm -f "$BATCH_FILE"
     echo '{"events":[' > "$BATCH_FILE"
 }
@@ -78,7 +77,7 @@ touch "$SEEN_FILE"
 while true; do
     # Snapshot current connections — conntrack -L outputs one line per entry:
     # tcp  6 117 SYN_SENT src=192.168.1.10 dst=8.8.8.8 sport=54321 dport=53 ...
-    conntrack -L -o extended 2>/dev/null | while IFS= read -r LINE; do
+    conntrack -L 2>/dev/null | while IFS= read -r LINE; do
         # Extract protocol: first word on the line
         PROTO=$(echo "$LINE" | awk '{print $1}')
         SRC=""
@@ -125,7 +124,6 @@ while true; do
         printf '{"protocol":"%s","src_ip":"%s","src_port":%s,"dst_ip":"%s","dst_host":"","dst_port":%s},\n' \
             "$PROTO" "$SRC" "$SPORT" "$DST" "$DPORT" >> "$BATCH_FILE"
 
-        BATCH_COUNT=$((BATCH_COUNT + 1))
     done
 
     # Flush after each poll cycle
