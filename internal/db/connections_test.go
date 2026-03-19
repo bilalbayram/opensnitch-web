@@ -159,3 +159,69 @@ func TestGetUniqueFlowsGroupsAndFilters(t *testing.T) {
 		t.Fatalf("expected curl flow after exclusion, got %+v", filtered[0])
 	}
 }
+
+func TestGetConnectionSummaryCountsActions(t *testing.T) {
+	database := newTestDatabase(t)
+
+	insertConnection(t, database, db.Connection{
+		Time:     "2026-03-16 10:00:00",
+		Node:     "node-a",
+		Action:   "allow",
+		Protocol: "tcp",
+		SrcIP:    "10.0.0.1",
+		SrcPort:  10001,
+		DstIP:    "93.184.216.34",
+		DstPort:  443,
+		Process:  "/usr/bin/curl",
+	})
+	insertConnection(t, database, db.Connection{
+		Time:     "2026-03-16 10:01:00",
+		Node:     "node-a",
+		Action:   "deny",
+		Protocol: "tcp",
+		SrcIP:    "10.0.0.2",
+		SrcPort:  10002,
+		DstIP:    "203.0.113.10",
+		DstPort:  22,
+		Process:  "/usr/bin/ssh",
+	})
+	insertConnection(t, database, db.Connection{
+		Time:     "2026-03-16 10:02:00",
+		Node:     "node-b",
+		Action:   "reject",
+		Protocol: "udp",
+		SrcIP:    "10.0.0.3",
+		SrcPort:  53000,
+		DstIP:    "1.1.1.1",
+		DstPort:  53,
+		Process:  "/usr/bin/dig",
+	})
+
+	summary, err := database.GetConnectionSummary()
+	if err != nil {
+		t.Fatalf("get connection summary: %v", err)
+	}
+
+	if summary.Total != 3 {
+		t.Fatalf("expected total=3, got %d", summary.Total)
+	}
+	if summary.Allowed != 1 {
+		t.Fatalf("expected allowed=1, got %d", summary.Allowed)
+	}
+	if summary.Denied != 2 {
+		t.Fatalf("expected denied=2, got %d", summary.Denied)
+	}
+}
+
+func TestGetConnectionSummaryEmpty(t *testing.T) {
+	database := newTestDatabase(t)
+
+	summary, err := database.GetConnectionSummary()
+	if err != nil {
+		t.Fatalf("get empty connection summary: %v", err)
+	}
+
+	if summary.Total != 0 || summary.Allowed != 0 || summary.Denied != 0 {
+		t.Fatalf("expected zero summary, got %+v", summary)
+	}
+}

@@ -58,9 +58,9 @@ function SummaryPanel({
   topProcesses: StatEntry[];
   topHosts: StatEntry[];
 }) {
-  const accepted = stats?.accepted ?? 0;
-  const dropped = stats?.dropped ?? 0;
-  const connections = stats?.connections ?? 0;
+  const allowed = stats?.allowed ?? 0;
+  const denied = stats?.denied ?? 0;
+  const total = stats?.total ?? 0;
 
   return (
     <div className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-card border border-border rounded-xl overflow-hidden">
@@ -75,16 +75,16 @@ function SummaryPanel({
       {/* Connection stats */}
       <div className="px-4 py-3 space-y-2.5 border-b border-border">
         <StatRow icon={Server} label="Nodes online" value={nodesOnline} color="text-success" />
-        <StatRow icon={ShieldCheck} label="Allowed" value={formatNumber(accepted)} color="text-success" />
-        <StatRow icon={ShieldX} label="Denied" value={formatNumber(dropped)} color="text-destructive" />
-        <StatRow icon={ShieldAlert} label="Total" value={formatNumber(connections)} />
+        <StatRow icon={ShieldCheck} label="Allowed" value={formatNumber(allowed)} color="text-success" />
+        <StatRow icon={ShieldX} label="Denied" value={formatNumber(denied)} color="text-destructive" />
+        <StatRow icon={ShieldAlert} label="Total" value={formatNumber(total)} />
 
         {/* Allow/deny ratio bar */}
-        {(accepted + dropped) > 0 && (
+        {(allowed + denied) > 0 && (
           <div className="pt-1">
             <div className="flex h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="bg-success h-full" style={{ width: `${(accepted / (accepted + dropped)) * 100}%` }} />
-              <div className="bg-destructive h-full" style={{ width: `${(dropped / (accepted + dropped)) * 100}%` }} />
+              <div className="bg-success h-full" style={{ width: `${(allowed / (allowed + denied)) * 100}%` }} />
+              <div className="bg-destructive h-full" style={{ width: `${(denied / (allowed + denied)) * 100}%` }} />
             </div>
           </div>
         )}
@@ -218,9 +218,9 @@ function LiveConnections({ connections }: { connections: ConnectionEvent[] }) {
 function MobileSummary({ stats }: { stats: DashboardStats | null }) {
   return (
     <div className="lg:hidden grid grid-cols-3 gap-2">
-      <MiniStat label="Connections" value={formatNumber(stats?.connections ?? 0)} />
-      <MiniStat label="Allowed" value={formatNumber(stats?.accepted ?? 0)} color="text-success" />
-      <MiniStat label="Denied" value={formatNumber(stats?.dropped ?? 0)} color="text-destructive" />
+      <MiniStat label="Connections" value={formatNumber(stats?.total ?? 0)} />
+      <MiniStat label="Allowed" value={formatNumber(stats?.allowed ?? 0)} color="text-success" />
+      <MiniStat label="Denied" value={formatNumber(stats?.denied ?? 0)} color="text-destructive" />
     </div>
   );
 }
