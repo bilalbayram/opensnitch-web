@@ -25,7 +25,7 @@ func (s *stubRouterProvisioner) Provision(ctx context.Context, req routerpkg.Con
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubRouterProvisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass string) ([]routerpkg.ProvisionStep, error) {
+func (s *stubRouterProvisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]routerpkg.ProvisionStep, error) {
 	return s.steps, s.err
 }
 
