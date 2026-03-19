@@ -70,11 +70,14 @@ trap 'flush_batch; exit 0' INT TERM
 # Main loop: poll conntrack table periodically instead of event streaming.
 # This avoids signal delivery issues with ash pipelines and is more
 # reliable on resource-constrained routers.
-SEEN_FILE="/tmp/conntrack-agent-seen"
-rm -f "$SEEN_FILE"
-touch "$SEEN_FILE"
+PREV_SEEN_FILE="/tmp/conntrack-agent-seen.prev"
+CURR_SEEN_FILE="/tmp/conntrack-agent-seen.curr"
+rm -f "$PREV_SEEN_FILE" "$CURR_SEEN_FILE"
+touch "$PREV_SEEN_FILE"
 
 while true; do
+    : > "$CURR_SEEN_FILE"
+
     # Snapshot current connections — conntrack -L outputs one line per entry:
     # tcp  6 117 SYN_SENT src=192.168.1.10 dst=8.8.8.8 sport=54321 dport=53 ...
     conntrack -L 2>/dev/null | while IFS= read -r LINE; do
@@ -114,12 +117,11 @@ while true; do
         is_lan_ip "$SRC" || continue
         is_private_ip "$DST" && continue
 
-        # Dedup: skip if we already reported this flow in this cycle
-        FLOW_KEY="${PROTO}_${SRC}_${DST}_${DPORT}"
-        grep -qF "$FLOW_KEY" "$SEEN_FILE" && continue
-        echo "$FLOW_KEY" >> "$SEEN_FILE"
-
         [ -z "$SPORT" ] && SPORT="0"
+
+        FLOW_KEY="${PROTO}_${SRC}_${SPORT}_${DST}_${DPORT}"
+        echo "$FLOW_KEY" >> "$CURR_SEEN_FILE"
+        grep -qF "$FLOW_KEY" "$PREV_SEEN_FILE" && continue
 
         printf '{"protocol":"%s","src_ip":"%s","src_port":%s,"dst_ip":"%s","dst_host":"","dst_port":%s},\n' \
             "$PROTO" "$SRC" "$SPORT" "$DST" "$DPORT" >> "$BATCH_FILE"
@@ -129,12 +131,7 @@ while true; do
     # Flush after each poll cycle
     flush_batch
 
-    # Rotate seen file to allow re-reporting after a few cycles
-    SEEN_LINES=$(wc -l < "$SEEN_FILE" 2>/dev/null || echo 0)
-    if [ "$SEEN_LINES" -gt 10000 ]; then
-        tail -n 5000 "$SEEN_FILE" > "${SEEN_FILE}.tmp"
-        mv "${SEEN_FILE}.tmp" "$SEEN_FILE"
-    fi
+    mv "$CURR_SEEN_FILE" "$PREV_SEEN_FILE"
 
     sleep "$FLUSH_INTERVAL"
 done
