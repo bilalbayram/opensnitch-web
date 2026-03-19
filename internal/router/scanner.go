@@ -143,6 +143,65 @@ func incIP(ip net.IP) {
 	}
 }
 
+// ResolveServerURL finds the server's LAN IP on the same subnet as routerIP
+// and returns a URL the router agent can use to reach the server.
+// httpAddr is the server's configured listen address (e.g. ":8080").
+// Returns (url, source) where source is "lan_auto" or "no_shared_subnet".
+func ResolveServerURL(routerIP string, httpAddr string) (string, string) {
+	rip := net.ParseIP(routerIP)
+	if rip == nil {
+		return "", "invalid_ip"
+	}
+	rip4 := rip.To4()
+	if rip4 == nil || !isPrivateIP(rip4) {
+		return "", "not_private"
+	}
+
+	port := extractPort(httpAddr)
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", "no_shared_subnet"
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip4 := ipNet.IP.To4()
+			if ip4 == nil || !isPrivateIP(ip4) {
+				continue
+			}
+			if ipNet.Contains(rip4) {
+				return fmt.Sprintf("http://%s:%s", ip4.String(), port), "lan_auto"
+			}
+		}
+	}
+
+	return "", "no_shared_subnet"
+}
+
+func extractPort(httpAddr string) string {
+	_, port, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		// httpAddr might be just a port like "8080" without colon
+		return "8080"
+	}
+	if port == "" {
+		return "8080"
+	}
+	return port
+}
+
 func isPrivateIP(ip net.IP) bool {
 	ip4 := ip.To4()
 	if ip4 == nil {

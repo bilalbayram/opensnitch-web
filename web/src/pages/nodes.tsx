@@ -20,6 +20,7 @@ import {
   Unplug,
   Radar,
   Wifi,
+  AlertTriangle,
 } from "lucide-react";
 import { ResponsiveDataView } from "@/components/ui/responsive-data-view";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
@@ -70,9 +71,13 @@ export default function NodesPage() {
     ssh_port: 22,
     ssh_user: "root",
     ssh_pass: "",
+    ssh_key: "",
     name: "",
     lan_subnet: "",
+    server_url: "",
   });
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [serverUrlSource, setServerUrlSource] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connectSteps, setConnectSteps] = useState<ProvisionStep[] | null>(
     null,
@@ -263,9 +268,13 @@ export default function NodesPage() {
           ssh_port: 22,
           ssh_user: "root",
           ssh_pass: "",
+          ssh_key: "",
           name: "",
           lan_subnet: "",
+          server_url: "",
         });
+        setShowAdvanced(false);
+        setServerUrlSource("");
         fetchNodes(true);
       }, 2000);
     } catch (e: unknown) {
@@ -816,6 +825,10 @@ export default function NodesPage() {
                     <div className="p-1 rounded-full bg-success/10">
                       <Check className="h-4 w-4 text-success" />
                     </div>
+                  ) : step.status === "warning" ? (
+                    <div className="p-1 rounded-full bg-amber-500/10">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    </div>
                   ) : (
                     <div className="p-1 rounded-full bg-destructive/10">
                       <X className="h-4 w-4 text-destructive" />
@@ -823,11 +836,11 @@ export default function NodesPage() {
                   )}
                   <div>
                     <div className="text-sm font-medium capitalize">{step.step}</div>
-                    <div className="text-xs text-muted-foreground">{step.message}</div>
+                    <div className={`text-xs ${step.status === "warning" ? "text-amber-500" : "text-muted-foreground"}`}>{step.message}</div>
                   </div>
                 </div>
               ))}
-              {connectSteps.every((s) => s.status === "done") && (
+              {connectSteps.every((s) => s.status === "done" || s.status === "warning") && (
                 <div className="mt-4 text-center text-sm text-success">
                   Router connected successfully!
                 </div>
@@ -919,6 +932,17 @@ export default function NodesPage() {
                         lan_subnet: autoDetectSubnet(prev.addr),
                       }));
                     }
+                    if (routerForm.addr) {
+                      api.suggestServerURL(routerForm.addr).then((res) => {
+                        if (res.server_url) {
+                          setRouterForm((prev) => ({
+                            ...prev,
+                            server_url: prev.server_url || res.server_url,
+                          }));
+                          setServerUrlSource(res.source);
+                        }
+                      }).catch(() => {});
+                    }
                   }}
                   className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
                 />
@@ -990,6 +1014,61 @@ export default function NodesPage() {
                   Only outbound traffic from this subnet to the internet will be tracked.
                 </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronDown className={`h-3 w-3 transition-transform ${showAdvanced ? "" : "-rotate-90"}`} />
+                Advanced
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">
+                      SSH Private Key <span className="text-muted-foreground/60">(optional)</span>
+                    </label>
+                    <textarea
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                      value={routerForm.ssh_key}
+                      onChange={(e) =>
+                        setRouterForm((prev) => ({ ...prev, ssh_key: e.target.value }))
+                      }
+                      rows={3}
+                      className="w-full text-xs font-mono px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary resize-y"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Paste an SSH private key for key-based auth. Password is used as fallback.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">
+                      Server URL{" "}
+                      {serverUrlSource === "lan_auto" && (
+                        <span className="text-emerald-500">(auto-detected LAN)</span>
+                      )}
+                      {!serverUrlSource && (
+                        <span className="text-muted-foreground/60">(auto-detected if empty)</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="http://192.168.1.50:8080"
+                      value={routerForm.server_url}
+                      onChange={(e) => {
+                        setRouterForm((prev) => ({ ...prev, server_url: e.target.value }));
+                        setServerUrlSource(e.target.value ? "user_override" : "");
+                      }}
+                      className="w-full text-sm px-3 py-2.5 rounded-lg bg-muted border border-border focus:outline-none focus:border-primary"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      URL the router agent will POST connection data to. Leave empty to auto-detect.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {connectError && (
                 <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
