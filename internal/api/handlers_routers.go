@@ -102,10 +102,7 @@ func (a *API) handleGetRouters(w http.ResponseWriter, r *http.Request) {
 		node, err := a.db.GetNode(rt.Addr)
 		online := false
 		if err == nil && node != nil {
-			// Consider online if last connection was within 60 seconds
-			if t, err := time.Parse("2006-01-02 15:04:05", node.LastConn); err == nil {
-				online = time.Since(t) < 60*time.Second
-			}
+			online = routerOnlineFromLastConn(node.LastConn)
 		}
 		result[i] = enrichedRouter{Router: rt, Online: online}
 	}
