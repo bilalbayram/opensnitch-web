@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,10 @@ func (c *fakeRemoteClient) Close() error {
 func (c *fakeRemoteClient) Run(cmd string) (string, error) {
 	result, ok := c.outputs[cmd]
 	if !ok {
+		// Allow connectivity check commands to pass by default
+		if strings.HasPrefix(cmd, "wget -q -O /dev/null --timeout=5") {
+			return "", nil
+		}
 		return "", fmt.Errorf("unexpected command: %s", cmd)
 	}
 	return result.output, result.err
@@ -67,7 +72,7 @@ func newTestProvisioner(t *testing.T, client remoteClient) (*Provisioner, *db.Da
 
 	return &Provisioner{
 		db: database,
-		dial: func(addr string, port int, user, pass string) (remoteClient, error) {
+		dial: func(addr string, port int, user, pass, key string) (remoteClient, error) {
 			return client, nil
 		},
 		sleep: func(_ time.Duration) {},
@@ -159,4 +164,104 @@ func TestProvisionReusesExistingAPIKeyAndUpdatesMetadata(t *testing.T) {
 	if !strings.Contains(config, "API_KEY=\"existing-key\"") {
 		t.Fatalf("expected config to reuse existing API key, got %q", config)
 	}
+}
+
+func TestProvisionOpkgRetryOnTransientFailure(t *testing.T) {
+	client := newFakeRemoteClient()
+
+	// First opkg call fails, second succeeds
+	client.outputs["which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING"] = fakeRunResult{output: "MISSING\n"}
+
+	callCount := 0
+	prov, _ := newTestProvisioner(t, &fakeRemoteClientWithOpkgRetry{
+		fakeRemoteClient: client,
+		opkgCallCount:    &callCount,
+	})
+
+	_, err := prov.Provision(context.Background(), ConnectRequest{
+		Addr:      "192.168.1.1",
+		SSHPort:   22,
+		SSHUser:   "root",
+		SSHPass:   "secret",
+		Name:      "router-retry",
+		LANSubnet: "192.168.1.0/24",
+		ServerURL: "http://server:8080",
+	})
+	if err != nil {
+		t.Fatalf("provision should succeed after retry: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected opkg to be called twice (initial + retry), got %d", callCount)
+	}
+}
+
+// fakeRemoteClientWithOpkgRetry wraps fakeRemoteClient to fail the first opkg call
+type fakeRemoteClientWithOpkgRetry struct {
+	*fakeRemoteClient
+	opkgCallCount *int
+}
+
+func (c *fakeRemoteClientWithOpkgRetry) Run(cmd string) (string, error) {
+	if cmd == "opkg update && opkg install conntrack" {
+		*c.opkgCallCount++
+		if *c.opkgCallCount == 1 {
+			return "mirror unreachable", errors.New("opkg failed")
+		}
+		return "installed\n", nil
+	}
+	return c.fakeRemoteClient.Run(cmd)
+}
+
+func TestProvisionConnectivityWarningOnUnreachableServer(t *testing.T) {
+	client := newFakeRemoteClient()
+	// Override the connectivity check to simulate failure
+	prov, _ := newTestProvisioner(t, &fakeRemoteClientWithConnCheck{
+		fakeRemoteClient: client,
+		connCheckFails:   true,
+	})
+
+	result, err := prov.Provision(context.Background(), ConnectRequest{
+		Addr:      "192.168.1.1",
+		SSHPort:   22,
+		SSHUser:   "root",
+		SSHPass:   "secret",
+		Name:      "router-warn",
+		LANSubnet: "192.168.1.0/24",
+		ServerURL: "http://server:8080",
+	})
+	if err != nil {
+		t.Fatalf("provision should succeed even when connectivity check fails: %v", err)
+	}
+
+	// Find the connectivity step
+	found := false
+	for _, step := range result.Steps {
+		if step.Step == "connectivity" {
+			found = true
+			if step.Status != "warning" {
+				t.Fatalf("expected connectivity step status=warning, got %q", step.Status)
+			}
+			if !strings.Contains(step.Message, "cannot reach server") {
+				t.Fatalf("expected warning message about unreachable server, got %q", step.Message)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected connectivity step in results, got steps: %+v", result.Steps)
+	}
+}
+
+type fakeRemoteClientWithConnCheck struct {
+	*fakeRemoteClient
+	connCheckFails bool
+}
+
+func (c *fakeRemoteClientWithConnCheck) Run(cmd string) (string, error) {
+	if strings.HasPrefix(cmd, "wget -q -O /dev/null --timeout=5") {
+		if c.connCheckFails {
+			return "UNREACHABLE\n", nil
+		}
+		return "", nil
+	}
+	return c.fakeRemoteClient.Run(cmd)
 }

@@ -24,7 +24,7 @@ import (
 
 type routerProvisioner interface {
 	Provision(ctx context.Context, req router.ConnectRequest) (*router.ProvisionResult, error)
-	Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass string) ([]router.ProvisionStep, error)
+	Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]router.ProvisionStep, error)
 }
 
 type API struct {

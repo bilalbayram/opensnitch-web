@@ -36,8 +36,10 @@ export interface ConnectRouterRequest {
   ssh_port?: number;
   ssh_user?: string;
   ssh_pass: string;
+  ssh_key?: string;
   name?: string;
   lan_subnet?: string;
+  server_url?: string;
 }
 
 export interface ProvisionStep {
@@ -49,6 +51,14 @@ export interface ProvisionStep {
 export interface ConnectRouterResponse {
   router: RouterRecord;
   steps: ProvisionStep[];
+  server_url?: string;
+  server_url_source?: string;
+}
+
+export interface SuggestServerURLResponse {
+  server_url: string;
+  source: string;
+  warning?: string;
 }
 
 export interface DiscoveredRouter {
@@ -602,6 +612,11 @@ export const api = {
     request<{ subnet: string; devices: DiscoveredRouter[] }>("/routers/scan", {
       method: "POST",
       body: JSON.stringify(subnet ? { subnet } : {}),
+    }),
+  suggestServerURL: (routerIP: string) =>
+    request<SuggestServerURLResponse>("/routers/suggest-url", {
+      method: "POST",
+      body: JSON.stringify({ router_ip: routerIP }),
     }),
   connectRouter: (params: ConnectRouterRequest) =>
     request<ConnectRouterResponse>("/routers/connect", {

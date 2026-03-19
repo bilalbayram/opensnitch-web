@@ -22,8 +22,8 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Addr == "" || req.SSHPass == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "addr and ssh_pass are required"})
+	if req.Addr == "" || (req.SSHPass == "" && req.SSHKey == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "addr and ssh_pass (or ssh_key) are required"})
 		return
 	}
 
@@ -165,9 +165,10 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		SSHPass string `json:"ssh_pass"`
+		SSHKey  string `json:"ssh_key"`
 	}
-	if err := readJSON(r, &req); err != nil || req.SSHPass == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ssh_pass is required"})
+	if err := readJSON(r, &req); err != nil || (req.SSHPass == "" && req.SSHKey == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ssh_pass or ssh_key is required"})
 		return
 	}
 
@@ -177,7 +178,7 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	steps, deprovErr := a.routerProv.Deprovision(r.Context(), rt.Addr, rt.SSHPort, rt.SSHUser, req.SSHPass)
+	steps, deprovErr := a.routerProv.Deprovision(r.Context(), rt.Addr, rt.SSHPort, rt.SSHUser, req.SSHPass, req.SSHKey)
 	if deprovErr != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": deprovErr.Error(),

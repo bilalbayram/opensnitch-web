@@ -37,7 +37,7 @@ func (c *sshRemoteClient) WriteFile(path, content string) error {
 
 type Provisioner struct {
 	db    *db.Database
-	dial  func(addr string, port int, user, pass string) (remoteClient, error)
+	dial  func(addr string, port int, user, pass, key string) (remoteClient, error)
 	sleep func(time.Duration)
 }
 
@@ -46,6 +46,7 @@ type ConnectRequest struct {
 	SSHPort   int    `json:"ssh_port"`
 	SSHUser   string `json:"ssh_user"`
 	SSHPass   string `json:"ssh_pass"`
+	SSHKey    string `json:"ssh_key,omitempty"`
 	Name      string `json:"name"`
 	LANSubnet string `json:"lan_subnet"`
 	ServerURL string `json:"server_url,omitempty"`
@@ -83,7 +84,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	existing, _ := p.db.GetRouterByAddr(req.Addr)
 
 	// 1. SSH connect
-	client, err := p.dial(req.Addr, req.SSHPort, req.SSHUser, req.SSHPass)
+	client, err := p.dial(req.Addr, req.SSHPort, req.SSHUser, req.SSHPass, req.SSHKey)
 	if err != nil {
 		addStep("connect", "error", fmt.Sprintf("SSH connection failed: %v", err))
 		return &ProvisionResult{Steps: steps}, fmt.Errorf("ssh dial: %w", err)
@@ -108,7 +109,12 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	if strings.TrimSpace(out) == "MISSING" {
 		out, err = client.Run("opkg update && opkg install conntrack")
 		if err != nil {
-			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack: %s", strings.TrimSpace(out)))
+			// Retry once — OpenWrt mirrors can be transiently unreachable
+			p.sleep(3 * time.Second)
+			out, err = client.Run("opkg update && opkg install conntrack")
+		}
+		if err != nil {
+			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack (mirror may be unreachable): %s", strings.TrimSpace(out)))
 			return &ProvisionResult{Steps: steps}, fmt.Errorf("opkg install failed: %w", err)
 		}
 		addStep("dependencies", "done", "Installed conntrack")
@@ -183,7 +189,15 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	}
 	addStep("start", "done", "Service running")
 
-	// 7. Store router record
+	// 7. Verify the agent can reach the server
+	out, err = client.Run(fmt.Sprintf("wget -q -O /dev/null --timeout=5 %q 2>&1 || echo UNREACHABLE", req.ServerURL+"/api/v1/ingest"))
+	if err != nil || strings.Contains(out, "UNREACHABLE") {
+		addStep("connectivity", "warning", fmt.Sprintf("Router cannot reach server at %s — check firewall rules (ingest port must be open to router network)", req.ServerURL))
+	} else {
+		addStep("connectivity", "done", "Server reachable from router")
+	}
+
+	// 8. Store router record
 	router := &db.Router{
 		Name:      req.Name,
 		Addr:      req.Addr,
@@ -202,10 +216,10 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	return &ProvisionResult{Router: router, Steps: steps}, nil
 }
 
-func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass string) ([]ProvisionStep, error) {
+func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]ProvisionStep, error) {
 	var steps []ProvisionStep
 
-	client, err := p.dial(addr, sshPort, sshUser, sshPass)
+	client, err := p.dial(addr, sshPort, sshUser, sshPass, sshKey)
 	if err != nil {
 		steps = append(steps, ProvisionStep{"connect", "error", fmt.Sprintf("SSH failed: %v", err)})
 		return steps, err
@@ -246,12 +260,21 @@ func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int,
 
 // --- helpers ---
 
-func sshDial(addr string, port int, user, pass string) (remoteClient, error) {
+func sshDial(addr string, port int, user, pass, key string) (remoteClient, error) {
+	var authMethods []ssh.AuthMethod
+	if key != "" {
+		signer, err := ssh.ParsePrivateKey([]byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("parse SSH key: %w", err)
+		}
+		authMethods = append(authMethods, ssh.PublicKeys(signer))
+	}
+	if pass != "" {
+		authMethods = append(authMethods, ssh.Password(pass))
+	}
 	config := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(pass),
-		},
+		User:            user,
+		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
@@ -283,8 +306,11 @@ func writeSSHRemoteFile(client *ssh.Client, path, content string) error {
 	// Single-quoted delimiter ('AGENT_EOF') prevents any shell expansion.
 	const delim = "___COLOMBO_EOF___"
 	cmd := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", path, delim, content, delim)
-	_, err := runSSHCommand(client, cmd)
-	return err
+	out, err := runSSHCommand(client, cmd)
+	if err != nil {
+		return fmt.Errorf("%w (output: %s)", err, strings.TrimSpace(out))
+	}
+	return nil
 }
 
 func deriveLANPrefix(routerAddr, userSubnet string) string {
