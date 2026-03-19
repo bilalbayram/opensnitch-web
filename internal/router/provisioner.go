@@ -13,8 +13,32 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+type remoteClient interface {
+	Close() error
+	Run(cmd string) (string, error)
+	WriteFile(path, content string) error
+}
+
+type sshRemoteClient struct {
+	client *ssh.Client
+}
+
+func (c *sshRemoteClient) Close() error {
+	return c.client.Close()
+}
+
+func (c *sshRemoteClient) Run(cmd string) (string, error) {
+	return runSSHCommand(c.client, cmd)
+}
+
+func (c *sshRemoteClient) WriteFile(path, content string) error {
+	return writeSSHRemoteFile(c.client, path, content)
+}
+
 type Provisioner struct {
-	db *db.Database
+	db    *db.Database
+	dial  func(addr string, port int, user, pass string) (remoteClient, error)
+	sleep func(time.Duration)
 }
 
 type ConnectRequest struct {
@@ -24,12 +48,14 @@ type ConnectRequest struct {
 	SSHPass   string `json:"ssh_pass"`
 	Name      string `json:"name"`
 	LANSubnet string `json:"lan_subnet"`
-	ServerURL string `json:"-"`
+	ServerURL string `json:"server_url,omitempty"`
 }
 
 type ProvisionResult struct {
-	Router *db.Router      `json:"router"`
-	Steps  []ProvisionStep `json:"steps"`
+	Router          *db.Router      `json:"router"`
+	Steps           []ProvisionStep `json:"steps"`
+	ServerURL       string          `json:"server_url"`
+	ServerURLSource string          `json:"server_url_source"`
 }
 
 type ProvisionStep struct {
@@ -39,7 +65,11 @@ type ProvisionStep struct {
 }
 
 func NewProvisioner(database *db.Database) *Provisioner {
-	return &Provisioner{db: database}
+	return &Provisioner{
+		db:    database,
+		dial:  sshDial,
+		sleep: time.Sleep,
+	}
 }
 
 func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*ProvisionResult, error) {
@@ -50,16 +80,10 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 		log.Printf("[router] %s: %s — %s", step, status, message)
 	}
 
-	// Check if this router is already registered
 	existing, _ := p.db.GetRouterByAddr(req.Addr)
-	if existing != nil {
-		// Delete old record so re-provisioning works cleanly
-		p.db.DeleteRouter(req.Addr)
-		log.Printf("[router] Re-provisioning %s (old record removed)", req.Addr)
-	}
 
 	// 1. SSH connect
-	client, err := sshDial(req.Addr, req.SSHPort, req.SSHUser, req.SSHPass)
+	client, err := p.dial(req.Addr, req.SSHPort, req.SSHUser, req.SSHPass)
 	if err != nil {
 		addStep("connect", "error", fmt.Sprintf("SSH connection failed: %v", err))
 		return &ProvisionResult{Steps: steps}, fmt.Errorf("ssh dial: %w", err)
@@ -68,7 +92,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	addStep("connect", "done", fmt.Sprintf("Connected to %s:%d", req.Addr, req.SSHPort))
 
 	// 2. Verify OpenWrt
-	out, err := runCommand(client, "cat /etc/openwrt_release 2>/dev/null")
+	out, err := client.Run("cat /etc/openwrt_release 2>/dev/null")
 	if err != nil || !strings.Contains(out, "DISTRIB") {
 		addStep("verify", "error", "Not an OpenWrt device")
 		return &ProvisionResult{Steps: steps}, fmt.Errorf("not an OpenWrt device")
@@ -76,13 +100,13 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	addStep("verify", "done", "OpenWrt verified")
 
 	// 3. Install conntrack if needed (OpenWrt package is "conntrack", not "conntrack-tools")
-	out, err = runCommand(client, "which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING")
+	out, err = client.Run("which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING")
 	if err != nil {
 		addStep("dependencies", "error", fmt.Sprintf("Failed to check packages: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 	if strings.TrimSpace(out) == "MISSING" {
-		out, err = runCommand(client, "opkg update && opkg install conntrack")
+		out, err = client.Run("opkg update && opkg install conntrack")
 		if err != nil {
 			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack: %s", strings.TrimSpace(out)))
 			return &ProvisionResult{Steps: steps}, fmt.Errorf("opkg install failed: %w", err)
@@ -92,11 +116,15 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 		addStep("dependencies", "done", "conntrack already available")
 	}
 
-	// 4. Generate API key and render config
-	apiKey, err := db.GenerateAPIKey()
-	if err != nil {
-		addStep("deploy", "error", fmt.Sprintf("Failed to generate API key: %v", err))
-		return &ProvisionResult{Steps: steps}, err
+	apiKey := ""
+	if existing != nil {
+		apiKey = existing.APIKey
+	} else {
+		apiKey, err = db.GenerateAPIKey()
+		if err != nil {
+			addStep("deploy", "error", fmt.Sprintf("Failed to generate API key: %v", err))
+			return &ProvisionResult{Steps: steps}, err
+		}
 	}
 
 	lanPrefix := deriveLANPrefix(req.Addr, req.LANSubnet)
@@ -109,46 +137,46 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	})
 
 	// 5. Deploy files
-	if _, err := runCommand(client, "mkdir -p /etc/conntrack-agent"); err != nil {
+	if _, err := client.Run("mkdir -p /etc/conntrack-agent"); err != nil {
 		addStep("deploy", "error", fmt.Sprintf("Failed to create directory: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
-	if err := writeRemoteFile(client, "/etc/conntrack-agent/config", agentCfg); err != nil {
+	if err := client.WriteFile("/etc/conntrack-agent/config", agentCfg); err != nil {
 		addStep("deploy", "error", fmt.Sprintf("Failed to write config: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
-	if err := writeRemoteFile(client, "/etc/conntrack-agent/agent.sh", AgentScript()); err != nil {
+	if err := client.WriteFile("/etc/conntrack-agent/agent.sh", AgentScript()); err != nil {
 		addStep("deploy", "error", fmt.Sprintf("Failed to write agent script: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
-	if err := writeRemoteFile(client, "/etc/init.d/conntrack-agent", InitdScript()); err != nil {
+	if err := client.WriteFile("/etc/init.d/conntrack-agent", InitdScript()); err != nil {
 		addStep("deploy", "error", fmt.Sprintf("Failed to write init.d script: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
-	if _, err := runCommand(client, "chmod +x /etc/conntrack-agent/agent.sh /etc/init.d/conntrack-agent"); err != nil {
+	if _, err := client.Run("chmod +x /etc/conntrack-agent/agent.sh /etc/init.d/conntrack-agent"); err != nil {
 		addStep("deploy", "error", fmt.Sprintf("Failed to chmod: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 	addStep("deploy", "done", "Agent files deployed")
 
 	// 6. Enable and start service
-	if _, err := runCommand(client, "/etc/init.d/conntrack-agent enable"); err != nil {
+	if _, err := client.Run("/etc/init.d/conntrack-agent enable"); err != nil {
 		addStep("start", "error", fmt.Sprintf("Failed to enable service: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
-	if _, err := runCommand(client, "/etc/init.d/conntrack-agent start"); err != nil {
+	if _, err := client.Run("/etc/init.d/conntrack-agent start"); err != nil {
 		addStep("start", "error", fmt.Sprintf("Failed to start service: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 
 	// Brief pause then verify
-	time.Sleep(time.Second)
-	out, err = runCommand(client, "pgrep -f 'conntrack-agent/agent.sh' >/dev/null 2>&1 && echo RUNNING || echo STOPPED")
+	p.sleep(time.Second)
+	out, err = client.Run("pgrep -f 'conntrack-agent/agent.sh' >/dev/null 2>&1 && echo RUNNING || echo STOPPED")
 	if err != nil || strings.TrimSpace(out) != "RUNNING" {
 		addStep("start", "error", "Service started but process not found")
 		return &ProvisionResult{Steps: steps}, fmt.Errorf("agent not running after start")
@@ -165,7 +193,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 		LANSubnet: lanPrefix,
 		Status:    "active",
 	}
-	if err := p.db.InsertRouter(router); err != nil {
+	if err := p.db.UpsertRouter(router); err != nil {
 		addStep("register", "error", fmt.Sprintf("Failed to save router: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
@@ -177,7 +205,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass string) ([]ProvisionStep, error) {
 	var steps []ProvisionStep
 
-	client, err := sshDial(addr, sshPort, sshUser, sshPass)
+	client, err := p.dial(addr, sshPort, sshUser, sshPass)
 	if err != nil {
 		steps = append(steps, ProvisionStep{"connect", "error", fmt.Sprintf("SSH failed: %v", err)})
 		return steps, err
@@ -185,9 +213,32 @@ func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int,
 	defer client.Close()
 	steps = append(steps, ProvisionStep{"connect", "done", "Connected"})
 
-	runCommand(client, "/etc/init.d/conntrack-agent stop")
-	runCommand(client, "/etc/init.d/conntrack-agent disable")
-	runCommand(client, "rm -rf /etc/conntrack-agent /etc/init.d/conntrack-agent")
+	if out, err := client.Run("if [ -x /etc/init.d/conntrack-agent ]; then /etc/init.d/conntrack-agent stop; else echo ABSENT; fi"); err != nil {
+		steps = append(steps, ProvisionStep{"stop", "error", strings.TrimSpace(out)})
+		return steps, fmt.Errorf("stop agent: %w", err)
+	} else {
+		msg := "Agent stopped"
+		if strings.TrimSpace(out) == "ABSENT" {
+			msg = "Agent service already absent"
+		}
+		steps = append(steps, ProvisionStep{"stop", "done", msg})
+	}
+
+	if out, err := client.Run("if [ -x /etc/init.d/conntrack-agent ]; then /etc/init.d/conntrack-agent disable; else echo ABSENT; fi"); err != nil {
+		steps = append(steps, ProvisionStep{"disable", "error", strings.TrimSpace(out)})
+		return steps, fmt.Errorf("disable agent: %w", err)
+	} else {
+		msg := "Agent disabled"
+		if strings.TrimSpace(out) == "ABSENT" {
+			msg = "Agent service already absent"
+		}
+		steps = append(steps, ProvisionStep{"disable", "done", msg})
+	}
+
+	if out, err := client.Run("rm -rf /etc/conntrack-agent /etc/init.d/conntrack-agent"); err != nil {
+		steps = append(steps, ProvisionStep{"remove", "error", strings.TrimSpace(out)})
+		return steps, fmt.Errorf("remove agent files: %w", err)
+	}
 	steps = append(steps, ProvisionStep{"remove", "done", "Agent removed"})
 
 	return steps, nil
@@ -195,7 +246,7 @@ func (p *Provisioner) Deprovision(ctx context.Context, addr string, sshPort int,
 
 // --- helpers ---
 
-func sshDial(addr string, port int, user, pass string) (*ssh.Client, error) {
+func sshDial(addr string, port int, user, pass string) (remoteClient, error) {
 	config := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
@@ -204,10 +255,14 @@ func sshDial(addr string, port int, user, pass string) (*ssh.Client, error) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
-	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", addr, port), config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", addr, port), config)
+	if err != nil {
+		return nil, err
+	}
+	return &sshRemoteClient{client: client}, nil
 }
 
-func runCommand(client *ssh.Client, cmd string) (string, error) {
+func runSSHCommand(client *ssh.Client, cmd string) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("new session: %w", err)
@@ -223,12 +278,12 @@ func runCommand(client *ssh.Client, cmd string) (string, error) {
 	return output, err
 }
 
-func writeRemoteFile(client *ssh.Client, path, content string) error {
+func writeSSHRemoteFile(client *ssh.Client, path, content string) error {
 	// Use heredoc with a delimiter that won't appear in our controlled content.
 	// Single-quoted delimiter ('AGENT_EOF') prevents any shell expansion.
 	const delim = "___COLOMBO_EOF___"
 	cmd := fmt.Sprintf("cat > %s <<'%s'\n%s\n%s", path, delim, content, delim)
-	_, err := runCommand(client, cmd)
+	_, err := runSSHCommand(client, cmd)
 	return err
 }
 

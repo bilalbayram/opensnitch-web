@@ -13,7 +13,7 @@ type Router struct {
 	Addr      string `json:"addr"`
 	SSHPort   int    `json:"ssh_port"`
 	SSHUser   string `json:"ssh_user"`
-	APIKey    string `json:"api_key"`
+	APIKey    string `json:"-"`
 	LANSubnet string `json:"lan_subnet"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
@@ -42,6 +42,37 @@ func (d *Database) InsertRouter(r *Router) error {
 	}
 	id, _ := res.LastInsertId()
 	r.ID = id
+	return nil
+}
+
+func (d *Database) UpsertRouter(r *Router) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+		INSERT INTO routers (name, addr, ssh_port, ssh_user, api_key, lan_subnet, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(addr) DO UPDATE SET
+			name=excluded.name,
+			ssh_port=excluded.ssh_port,
+			ssh_user=excluded.ssh_user,
+			lan_subnet=excluded.lan_subnet,
+			status=excluded.status,
+			updated_at=datetime('now')`,
+		r.Name, r.Addr, r.SSHPort, r.SSHUser, r.APIKey, r.LANSubnet, r.Status,
+	)
+	if err != nil {
+		return err
+	}
+
+	err = d.db.QueryRow(`
+		SELECT id, created_at, updated_at, api_key
+		FROM routers WHERE addr = ?`, r.Addr).
+		Scan(&r.ID, &r.CreatedAt, &r.UpdatedAt, &r.APIKey)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 

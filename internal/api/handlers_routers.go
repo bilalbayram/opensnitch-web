@@ -37,12 +37,22 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 		req.Name = req.Addr
 	}
 
-	// Auto-detect server URL from the request
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	// Resolve server URL: user override > LAN auto-detect > Host header fallback
+	var serverURLSource string
+	if req.ServerURL != "" {
+		serverURLSource = "user_override"
+	} else if lanURL, source := router.ResolveServerURL(req.Addr, a.cfg.Server.HTTPAddr); lanURL != "" {
+		req.ServerURL = lanURL
+		serverURLSource = source
+	} else {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		req.ServerURL = fmt.Sprintf("%s://%s", scheme, r.Host)
+		serverURLSource = "host_fallback"
+		log.Printf("[router] No shared subnet with %s (reason: %s), falling back to Host header: %s", req.Addr, source, req.ServerURL)
 	}
-	req.ServerURL = fmt.Sprintf("%s://%s", scheme, r.Host)
 
 	// Auto-detect LAN subnet from router IP if not provided
 	if req.LANSubnet == "" {
@@ -60,6 +70,9 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	result.ServerURL = req.ServerURL
+	result.ServerURLSource = serverURLSource
 
 	// Register as a node
 	a.db.UpsertNode(&db.Node{
@@ -165,8 +178,14 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	steps, deprovErr := a.routerProv.Deprovision(r.Context(), rt.Addr, rt.SSHPort, rt.SSHUser, req.SSHPass)
+	if deprovErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": deprovErr.Error(),
+			"steps": steps,
+		})
+		return
+	}
 
-	// Clean up DB even if deprovision had issues
 	if err := a.db.DeleteRouter(rt.Addr); err != nil {
 		log.Printf("[router] Failed to delete router record %s: %v", rt.Addr, err)
 	}
@@ -176,17 +195,29 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 		"addr": rt.Addr,
 	})
 
-	if deprovErr != nil {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status":  "removed_with_errors",
-			"steps":   steps,
-			"warning": deprovErr.Error(),
-		})
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "ok",
 		"steps":  steps,
 	})
+}
+
+func (a *API) handleSuggestServerURL(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RouterIP string `json:"router_ip"`
+	}
+	if err := readJSON(r, &req); err != nil || req.RouterIP == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "router_ip is required"})
+		return
+	}
+
+	serverURL, source := router.ResolveServerURL(req.RouterIP, a.cfg.Server.HTTPAddr)
+
+	resp := map[string]string{
+		"server_url": serverURL,
+		"source":     source,
+	}
+	if serverURL == "" {
+		resp["warning"] = "Server and router do not appear to share a subnet. The router may not be able to reach the server. You can enter a server URL manually."
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

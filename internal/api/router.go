@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -21,6 +22,11 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 )
 
+type routerProvisioner interface {
+	Provision(ctx context.Context, req router.ConnectRequest) (*router.ProvisionResult, error)
+	Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass string) ([]router.ProvisionStep, error)
+}
+
 type API struct {
 	cfg          *config.Config
 	db           *db.Database
@@ -30,7 +36,7 @@ type API struct {
 	templateSync *templatesync.Service
 	fetcher      *blocklist.Fetcher
 	geoResolver  *geoip.Resolver
-	routerProv   *router.Provisioner
+	routerProv   routerProvisioner
 	upgrader     websocket.Upgrader
 }
 
@@ -154,6 +160,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 
 		// Routers
 		r.Post("/api/v1/routers/scan", api.handleScanRouters)
+		r.Post("/api/v1/routers/suggest-url", api.handleSuggestServerURL)
 		r.Post("/api/v1/routers/connect", api.handleConnectRouter)
 		r.Get("/api/v1/routers", api.handleGetRouters)
 		r.Post("/api/v1/routers/{addr}/disconnect", api.handleDisconnectRouter)
