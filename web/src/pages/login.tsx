@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/stores/app-store';
+import { AppLogo } from '@/components/app-logo';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -31,7 +31,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Shield className="h-12 w-12 text-primary mx-auto mb-3" />
+          <AppLogo className="h-12 w-12 mx-auto mb-3" alt="OpenSnitch" />
           <h1 className="text-2xl font-bold">OpenSnitch</h1>
           <p className="text-sm text-muted-foreground mt-1">Web UI</p>
         </div>
