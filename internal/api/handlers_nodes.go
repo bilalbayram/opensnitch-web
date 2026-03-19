@@ -3,11 +3,27 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	pb "github.com/evilsocket/opensnitch-web/proto"
 )
+
+const routerHeartbeatTTL = 60 * time.Second
+
+func routerOnlineFromLastConn(lastConn string) bool {
+	if lastConn == "" {
+		return false
+	}
+
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", lastConn, time.Local)
+	if err != nil {
+		return false
+	}
+
+	return time.Since(t) < routerHeartbeatTTL
+}
 
 func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 	nodes, err := a.db.GetNodes()
@@ -41,6 +57,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		LastConn            string   `json:"last_connection"`
 		Online              bool     `json:"online"`
 		Mode                string   `json:"mode"`
+		SourceType          string   `json:"source_type"`
 		Tags                []string `json:"tags"`
 		TemplateSyncPending bool     `json:"template_sync_pending"`
 		TemplateSyncError   string   `json:"template_sync_error"`
@@ -48,11 +65,22 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]enrichedNode, len(nodes))
 	for i, n := range nodes {
+		sourceType := n.SourceType
+		if sourceType == "" {
+			sourceType = "opensnitch"
+		}
 		_, online := liveNodes[n.Addr]
+		if sourceType == "router" {
+			online = routerOnlineFromLastConn(n.LastConn)
+		}
+
 		status := n.Status
 		if online {
 			status = "online"
+		} else if sourceType == "router" {
+			status = "offline"
 		}
+
 		tags := nodeTags[n.Addr]
 		if tags == nil {
 			tags = []string{}
@@ -70,6 +98,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			LastConn:            n.LastConn,
 			Online:              online,
 			Mode:                n.Mode,
+			SourceType:          sourceType,
 			Tags:                tags,
 			TemplateSyncPending: syncState.Pending,
 			TemplateSyncError:   syncState.Error,
@@ -100,6 +129,10 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sourceType := node.SourceType
+	if sourceType == "" {
+		sourceType = "opensnitch"
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"addr":                  node.Addr,
 		"hostname":              node.Hostname,
@@ -112,6 +145,7 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		"status":                node.Status,
 		"last_connection":       node.LastConn,
 		"mode":                  node.Mode,
+		"source_type":           sourceType,
 		"tags":                  tags,
 		"template_sync_pending": syncState.Pending,
 		"template_sync_error":   syncState.Error,

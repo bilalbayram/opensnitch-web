@@ -12,9 +12,61 @@ export interface NodeRecord {
   last_connection: string;
   online: boolean;
   mode: string;
+  source_type: string;
   tags: string[];
   template_sync_pending: boolean;
   template_sync_error: string;
+}
+
+export interface RouterRecord {
+  id: number;
+  name: string;
+  addr: string;
+  ssh_port: number;
+  ssh_user: string;
+  lan_subnet: string;
+  status: string;
+  online: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectRouterRequest {
+  addr: string;
+  ssh_port?: number;
+  ssh_user?: string;
+  ssh_pass: string;
+  ssh_key?: string;
+  name?: string;
+  lan_subnet?: string;
+  server_url?: string;
+}
+
+export interface ProvisionStep {
+  step: string;
+  status: string;
+  message: string;
+}
+
+export interface ConnectRouterResponse {
+  router: RouterRecord;
+  steps: ProvisionStep[];
+  server_url?: string;
+  server_url_source?: string;
+}
+
+export interface SuggestServerURLResponse {
+  server_url: string;
+  source: string;
+  warning?: string;
+}
+
+export interface DiscoveredRouter {
+  ip: string;
+  ssh_port: number;
+  banner: string;
+  is_openwrt: boolean;
+  hostname?: string;
 }
 
 export interface ConnectionRecord {
@@ -148,6 +200,73 @@ export interface TemplateRecord {
   attachments: TemplateAttachmentRecord[];
 }
 
+export interface DNSDomainRecord {
+  id: number;
+  domain: string;
+  ip: string;
+  node: string;
+  hit_count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface DNSServerRecord {
+  dst_ip: string;
+  process: string;
+  protocol: string;
+  action: string;
+  hits: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface FirewallRule {
+  Position: number;
+  Description: string;
+  Parameters: string;
+  Target: string;
+}
+
+export interface FirewallChain {
+  Name: string;
+  Family: string;
+  Hook: string;
+  Type: string;
+  Policy: string;
+  Rules: FirewallRule[];
+}
+
+export interface FirewallSystemRule {
+  Chains: FirewallChain[];
+}
+
+export interface FirewallNodeState {
+  node_addr: string;
+  running: boolean;
+  firewall: {
+    SystemRules: FirewallSystemRule[];
+  };
+}
+
+export interface BlocklistRecord {
+  id: number;
+  name: string;
+  url: string;
+  category: string;
+  description: string;
+  enabled: boolean;
+  domain_count: number;
+  last_synced: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TopNRecord {
+  what: string;
+  hits: number;
+  node: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {
@@ -168,7 +287,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+    const error = new Error(err.error || res.statusText) as Error & Record<string, unknown>;
+    // Preserve extra fields (e.g. steps from router provisioning errors)
+    for (const key of Object.keys(err)) {
+      if (key !== "error") {
+        error[key] = err[key];
+      }
+    }
+    throw error;
   }
 
   const text = await res.text();
@@ -286,7 +412,7 @@ export const api = {
   // Stats
   getStats: () => request<DashboardStats>("/stats"),
   getStatsByTable: (table: string, limit?: number) =>
-    request<Array<Record<string, unknown>>>(
+    request<TopNRecord[]>(
       `/stats/${table}${limit ? `?limit=${limit}` : ""}`,
     ),
   getTimeSeries: (hours?: number, bucket?: number, node?: string) => {
@@ -328,7 +454,7 @@ export const api = {
   },
 
   // Firewall
-  getFirewall: () => request<any[]>("/firewall"),
+  getFirewall: () => request<FirewallNodeState[]>("/firewall"),
   reloadFirewall: (node?: string) =>
     request(
       `/firewall/reload${node ? `?node=${encodeURIComponent(node)}` : ""}`,
@@ -387,19 +513,19 @@ export const api = {
   // DNS
   getDNSDomains: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<{ data: any[]; total: number }>(`/dns/domains${qs}`);
+    return request<{ data: DNSDomainRecord[]; total: number }>(`/dns/domains${qs}`);
   },
   purgeDNSDomains: () => request("/dns/domains", { method: "DELETE" }),
   getDNSServers: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return request<{ data: any[]; total: number }>(`/dns/servers${qs}`);
+    return request<{ data: DNSServerRecord[]; total: number }>(`/dns/servers${qs}`);
   },
   createDNSServerRules: (payload: {
     node: string;
     allowed_ips: string[];
     description?: string;
   }) =>
-    request<{ status: string; data: any[]; count: number }>(
+    request<{ status: string; data: RuleRecord[]; count: number }>(
       "/dns/server-rules",
       {
         method: "POST",
@@ -408,7 +534,7 @@ export const api = {
     ),
 
   // Blocklists
-  getBlocklists: () => request<any[]>("/blocklists"),
+  getBlocklists: () => request<BlocklistRecord[]>("/blocklists"),
   createBlocklist: (name: string, url: string, category: string) =>
     request("/blocklists", {
       method: "POST",
@@ -479,6 +605,32 @@ export const api = {
     request<{ status: string }>(
       `/templates/${templateId}/attachments/${attachmentId}`,
       { method: "DELETE" },
+    ),
+
+  // Routers
+  scanRouters: (subnet?: string) =>
+    request<{ subnet: string; devices: DiscoveredRouter[] }>("/routers/scan", {
+      method: "POST",
+      body: JSON.stringify(subnet ? { subnet } : {}),
+    }),
+  suggestServerURL: (routerIP: string) =>
+    request<SuggestServerURLResponse>("/routers/suggest-url", {
+      method: "POST",
+      body: JSON.stringify({ router_ip: routerIP }),
+    }),
+  connectRouter: (params: ConnectRouterRequest) =>
+    request<ConnectRouterResponse>("/routers/connect", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+  getRouters: () => request<RouterRecord[]>("/routers"),
+  disconnectRouter: (addr: string, sshPass: string) =>
+    request<{ status: string; steps: ProvisionStep[] }>(
+      `/routers/${encodeURIComponent(addr)}/disconnect`,
+      {
+        method: "POST",
+        body: JSON.stringify({ ssh_pass: sshPass }),
+      },
     ),
 
   // Version & Updates

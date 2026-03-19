@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, type DNSDomainRecord, type DNSServerRecord } from '@/lib/api';
 import { Search, ChevronLeft, ChevronRight, Trash2, ShieldCheck } from 'lucide-react';
 
 type Tab = 'domains' | 'servers';
@@ -16,13 +16,13 @@ export default function DNSPage() {
   const [selectedNode, setSelectedNode] = useState('');
 
   // Domain resolutions state
-  const [domains, setDomains] = useState<any[]>([]);
+  const [domains, setDomains] = useState<DNSDomainRecord[]>([]);
   const [domainsTotal, setDomainsTotal] = useState(0);
   const [domainsPage, setDomainsPage] = useState(0);
   const [domainsSearch, setDomainsSearch] = useState('');
 
   // DNS servers state
-  const [servers, setServers] = useState<any[]>([]);
+  const [servers, setServers] = useState<DNSServerRecord[]>([]);
   const [serversTotal, setServersTotal] = useState(0);
   const [serversPage, setServersPage] = useState(0);
 
@@ -82,7 +82,7 @@ export default function DNSPage() {
     try {
       await api.purgeDNSDomains();
       fetchDomains();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to purge DNS domains:', err);
     }
   };
@@ -103,8 +103,8 @@ export default function DNSPage() {
       const res = await api.createDNSServerRules({ node: ruleNode, allowed_ips: ips });
       setRuleResult(`Created ${res.count} DNS rules successfully.`);
       setRuleIPs('');
-    } catch (err: any) {
-      setRuleResult(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setRuleResult(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setRuleCreating(false);
     }

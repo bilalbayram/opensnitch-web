@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -16,9 +17,15 @@ import (
 	"github.com/evilsocket/opensnitch-web/internal/geoip"
 	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
 	"github.com/evilsocket/opensnitch-web/internal/prompter"
+	"github.com/evilsocket/opensnitch-web/internal/router"
 	"github.com/evilsocket/opensnitch-web/internal/templatesync"
 	"github.com/evilsocket/opensnitch-web/internal/ws"
 )
+
+type routerProvisioner interface {
+	Provision(ctx context.Context, req router.ConnectRequest) (*router.ProvisionResult, error)
+	Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]router.ProvisionStep, error)
+}
 
 type API struct {
 	cfg          *config.Config
@@ -29,6 +36,7 @@ type API struct {
 	templateSync *templatesync.Service
 	fetcher      *blocklist.Fetcher
 	geoResolver  *geoip.Resolver
+	routerProv   routerProvisioner
 	upgrader     websocket.Upgrader
 }
 
@@ -42,6 +50,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		templateSync: templateSync,
 		fetcher:      blocklist.NewFetcher(),
 		geoResolver:  geo,
+		routerProv:   router.NewProvisioner(database),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -62,6 +71,9 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 	// Public routes
 	r.Post("/api/v1/auth/login", api.handleLogin)
 	r.Post("/api/v1/auth/logout", api.handleLogout)
+
+	// Ingest endpoint — API key auth (not JWT), used by router agents
+	r.Post("/api/v1/ingest", api.handleIngest)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -145,6 +157,13 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Post("/api/v1/blocklists/{id}/enable", api.handleEnableBlocklist)
 		r.Post("/api/v1/blocklists/{id}/disable", api.handleDisableBlocklist)
 		r.Post("/api/v1/blocklists/{id}/sync", api.handleSyncBlocklist)
+
+		// Routers
+		r.Post("/api/v1/routers/scan", api.handleScanRouters)
+		r.Post("/api/v1/routers/suggest-url", api.handleSuggestServerURL)
+		r.Post("/api/v1/routers/connect", api.handleConnectRouter)
+		r.Get("/api/v1/routers", api.handleGetRouters)
+		r.Post("/api/v1/routers/{addr}/disconnect", api.handleDisconnectRouter)
 
 		// Prompts
 		r.Get("/api/v1/prompts/pending", api.handleGetPendingPrompts)

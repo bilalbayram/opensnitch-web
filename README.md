@@ -91,6 +91,24 @@ ui:
   prompt_timeout: 120          # Seconds before a prompt times out
 ```
 
+## Router agent network requirements
+
+When using the router agent feature to monitor OpenWrt routers, the routers must be able to reach the server's HTTP port to POST connection data to `/api/v1/ingest`.
+
+The server listens on `0.0.0.0` by default, but a host firewall (e.g. UFW) may block incoming connections from the LAN. If router agents silently fail to report data, check your firewall rules.
+
+```bash
+# UFW — allow router agents on the LAN to reach the ingest API
+sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp
+
+# iptables — equivalent rule
+sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 8080 -j ACCEPT
+```
+
+Replace `192.168.1.0/24` with your router subnet and `8080` with your configured HTTP port.
+
+The provisioner performs a connectivity check after deployment and will show a warning in the UI if the router cannot reach the server.
+
 ## Development
 
 Built with Go 1.22 (Chi, gRPC, SQLite) and React 19 (Vite, TypeScript, Tailwind CSS 4).
