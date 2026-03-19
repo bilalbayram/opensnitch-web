@@ -5,6 +5,9 @@ import { formatNumber, cn } from '@/lib/utils';
 import { ShieldCheck, ShieldX, ShieldAlert, Server } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import type { GeoPoint } from '@/components/ui/geo-map';
+import { QuickRulePopover } from '@/components/quick-rule-popover';
+import { RuleEditorSheet } from '@/components/rule-editor-sheet';
+import type { RuleForm } from '@/components/rule-editor-sheet';
 
 const GeoMap = lazy(() => import('@/components/ui/geo-map').then((m) => ({ default: m.GeoMap })));
 
@@ -170,7 +173,7 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 // ─── Live Connections Feed ──────────────────────────────────────────
-function LiveConnections({ connections }: { connections: ConnectionEvent[] }) {
+function LiveConnections({ connections, onAdvanced }: { connections: ConnectionEvent[]; onAdvanced?: (prefill: Partial<RuleForm>) => void }) {
   return (
     <div className="flex-1 min-h-0 bg-card border border-border rounded-xl overflow-hidden flex flex-col">
       <div className="px-3 py-2 border-b border-border shrink-0 flex items-center justify-between">
@@ -202,6 +205,7 @@ function LiveConnections({ connections }: { connections: ConnectionEvent[] }) {
             </span>
             <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{conn.dst_port}</span>
             <span className="text-[10px] text-muted-foreground/40 uppercase shrink-0 w-7 text-right">{conn.protocol}</span>
+            <QuickRulePopover connection={conn} onAdvanced={onAdvanced} compact />
           </div>
         ))}
         {connections.length === 0 && (
@@ -261,6 +265,19 @@ export default function DashboardPage() {
   const [topProcesses, setTopProcesses] = useState<StatEntry[]>([]);
   const [topHosts, setTopHosts] = useState<StatEntry[]>([]);
   const [trafficData, setTrafficData] = useState<Array<{ time: string; allow: number; deny: number }>>([]);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorPrefill, setEditorPrefill] = useState<Partial<RuleForm> | undefined>();
+
+  const handleAdvanced = (prefill: Partial<RuleForm>) => {
+    setEditorPrefill(prefill);
+    setEditorOpen(true);
+  };
+
+  const handleEditorSave = async (form: RuleForm) => {
+    await api.createRule(form);
+    setEditorOpen(false);
+    setEditorPrefill(undefined);
+  };
 
   // Fetch dashboard stats
   useEffect(() => {
@@ -342,7 +359,7 @@ export default function DashboardPage() {
           <GeoMap geoData={geoData} className="shrink-0" />
         </Suspense>
         <TrafficTimeline data={trafficData} />
-        <LiveConnections connections={recent} />
+        <LiveConnections connections={recent} onAdvanced={handleAdvanced} />
       </div>
 
       {/* Right: Summary Panel */}
@@ -351,6 +368,15 @@ export default function DashboardPage() {
         nodesOnline={generalStats?.nodes_online ?? nodesOnline.size}
         topProcesses={processesForSidebar}
         topHosts={topHosts}
+      />
+
+      {/* Advanced Rule Editor */}
+      <RuleEditorSheet
+        open={editorOpen}
+        onClose={() => { setEditorOpen(false); setEditorPrefill(undefined); }}
+        initialValues={editorPrefill}
+        onSave={handleEditorSave}
+        title="Create Rule from Connection"
       />
     </div>
   );

@@ -3,6 +3,9 @@ import { api, type ConnectionRecord } from '@/lib/api';
 import { actionColor, truncateMiddle } from '@/lib/utils';
 import { Search, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
+import { QuickRulePopover } from '@/components/quick-rule-popover';
+import { RuleEditorSheet } from '@/components/rule-editor-sheet';
+import type { RuleForm } from '@/components/rule-editor-sheet';
 
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
@@ -10,6 +13,8 @@ export default function ConnectionsPage() {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorPrefill, setEditorPrefill] = useState<Partial<RuleForm> | undefined>();
   const limit = 50;
 
   const fetchConnections = () => {
@@ -38,6 +43,17 @@ export default function ConnectionsPage() {
     if (!confirm('Purge all connections? This cannot be undone.')) return;
     await api.purgeConnections();
     fetchConnections();
+  };
+
+  const handleAdvanced = (prefill: Partial<RuleForm>) => {
+    setEditorPrefill(prefill);
+    setEditorOpen(true);
+  };
+
+  const handleEditorSave = async (form: RuleForm) => {
+    await api.createRule(form);
+    setEditorOpen(false);
+    setEditorPrefill(undefined);
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -81,7 +97,7 @@ export default function ConnectionsPage() {
       {/* Data */}
       <ResponsiveDataView
         data={connections}
-        columns={8}
+        columns={9}
         emptyMessage="No connections found"
         tableHead={
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
@@ -93,6 +109,7 @@ export default function ConnectionsPage() {
             <th className="px-4 py-2">Destination</th>
             <th className="px-4 py-2">Process</th>
             <th className="px-4 py-2">Rule</th>
+            <th className="px-4 py-2 w-10"></th>
           </tr>
         }
         renderRow={(c: ConnectionRecord) => (
@@ -105,6 +122,12 @@ export default function ConnectionsPage() {
             <td className="px-4 py-2 text-xs">{c.dst_host || c.dst_ip}:{c.dst_port}</td>
             <td className="px-4 py-2 font-mono text-xs max-w-48 truncate" title={c.process}>{c.process}</td>
             <td className="px-4 py-2 text-xs text-muted-foreground">{c.rule}</td>
+            <td className="px-4 py-2">
+              <QuickRulePopover
+                connection={c}
+                onAdvanced={handleAdvanced}
+              />
+            </td>
           </tr>
         )}
         renderCard={(c: ConnectionRecord) => (
@@ -120,7 +143,13 @@ export default function ConnectionsPage() {
                 </span>
                 <span className="text-xs text-muted-foreground uppercase">{c.protocol}</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">{c.time}</span>
+              <div className="flex items-center gap-1.5">
+                <QuickRulePopover
+                  connection={c}
+                  onAdvanced={handleAdvanced}
+                />
+                <span className="text-[10px] text-muted-foreground">{c.time}</span>
+              </div>
             </div>
             <div className="font-mono text-xs break-all text-foreground/90">
               {truncateMiddle(c.process || '', 60)}
@@ -159,6 +188,15 @@ export default function ConnectionsPage() {
           </div>
         </div>
       )}
+
+      {/* Advanced Rule Editor */}
+      <RuleEditorSheet
+        open={editorOpen}
+        onClose={() => { setEditorOpen(false); setEditorPrefill(undefined); }}
+        initialValues={editorPrefill}
+        onSave={handleEditorSave}
+        title="Create Rule from Connection"
+      />
     </div>
   );
 }
