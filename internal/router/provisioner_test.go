@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 )
 
 type fakeRemoteClient struct {

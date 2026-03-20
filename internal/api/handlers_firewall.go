@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 func (a *API) handleGetFirewall(w http.ResponseWriter, r *http.Request) {

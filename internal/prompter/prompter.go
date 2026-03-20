@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type PendingPrompt struct {

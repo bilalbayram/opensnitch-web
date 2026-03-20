@@ -10,13 +10,13 @@ import (
 
 	"google.golang.org/grpc/peer"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
-	"github.com/evilsocket/opensnitch-web/internal/prompter"
-	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
-	"github.com/evilsocket/opensnitch-web/internal/templatesync"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
+	"github.com/bilalbayram/opensnitch-web/internal/prompter"
+	ruleutil "github.com/bilalbayram/opensnitch-web/internal/rules"
+	"github.com/bilalbayram/opensnitch-web/internal/templatesync"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 const testProcessPath = "/opt/opensnitch/test-app"

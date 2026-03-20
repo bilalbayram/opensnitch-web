@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	routerpkg "github.com/evilsocket/opensnitch-web/internal/router"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	routerpkg "github.com/bilalbayram/opensnitch-web/internal/router"
 )
 
 type stubRouterProvisioner struct {

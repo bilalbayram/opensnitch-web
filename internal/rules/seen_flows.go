@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 func LearningKeyFromConnection(conn *pb.Connection) (LearningKey, bool) {

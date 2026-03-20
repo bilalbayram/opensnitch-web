@@ -2,7 +2,7 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS := -X github.com/evilsocket/opensnitch-web/internal/version.Version=$(VERSION) -X github.com/evilsocket/opensnitch-web/internal/version.BuildTime=$(BUILD_TIME)
+LDFLAGS := -X github.com/bilalbayram/opensnitch-web/internal/version.Version=$(VERSION) -X github.com/bilalbayram/opensnitch-web/internal/version.BuildTime=$(BUILD_TIME)
 
 all: frontend embed build
 

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 )
 
 type Resolver struct {

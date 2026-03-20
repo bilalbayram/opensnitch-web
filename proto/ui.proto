@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package protocol;
 
-option go_package = "github.com/evilsocket/opensnitch-web/proto";
+option go_package = "github.com/bilalbayram/opensnitch-web/proto";
 
 service UI {
     rpc Ping(PingRequest) returns (PingReply) {}

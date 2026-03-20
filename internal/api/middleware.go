@@ -10,8 +10,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/evilsocket/opensnitch-web/internal/auth"
-	"github.com/evilsocket/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/auth"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
 )
 
 type contextKey string

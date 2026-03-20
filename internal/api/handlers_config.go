@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/evilsocket/opensnitch-web/internal/ws"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
 )
 
 func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {

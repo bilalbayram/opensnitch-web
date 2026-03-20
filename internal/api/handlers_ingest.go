@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
 )
 
 type ingestEvent struct {

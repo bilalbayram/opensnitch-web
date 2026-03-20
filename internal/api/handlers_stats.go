@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 	"github.com/go-chi/chi/v5"
 )
 

@@ -14,16 +14,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/grpc/peer"
 
-	"github.com/evilsocket/opensnitch-web/internal/config"
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
-	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
-	"github.com/evilsocket/opensnitch-web/internal/prompter"
-	"github.com/evilsocket/opensnitch-web/internal/router"
-	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
-	"github.com/evilsocket/opensnitch-web/internal/templatesync"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/grpcserver"
+	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
+	"github.com/bilalbayram/opensnitch-web/internal/prompter"
+	"github.com/bilalbayram/opensnitch-web/internal/router"
+	ruleutil "github.com/bilalbayram/opensnitch-web/internal/rules"
+	"github.com/bilalbayram/opensnitch-web/internal/templatesync"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type apiTestEnv struct {

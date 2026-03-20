@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 const (

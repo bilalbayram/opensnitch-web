@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"time"

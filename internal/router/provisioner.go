@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 	"golang.org/x/crypto/ssh"
 )
 

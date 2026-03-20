@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
-	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
+	ruleutil "github.com/bilalbayram/opensnitch-web/internal/rules"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type Service struct {
