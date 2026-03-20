@@ -42,6 +42,10 @@ func (a *API) handleGetGeneralStats(w http.ResponseWriter, r *http.Request) {
 		"denied":       summary.Denied,
 		"rules":        totalRules,
 		"ws_clients":   a.hub.ClientCount(),
+		"dns_policy": map[string]int{
+			"nodes_enforcing": a.countEnabledDNSPolicies(),
+			"total_nodes":     a.nodes.Count(),
+		},
 	})
 }
 
