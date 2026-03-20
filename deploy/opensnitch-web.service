@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenSnitch Web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/opensnitch-web
+ExecStart=/opt/opensnitch-web/opensnitch-web -config /opt/opensnitch-web/config.yaml
+Restart=on-failure
+RestartSec=5
+RestartForceExitStatus=42
+
+[Install]
+WantedBy=multi-user.target

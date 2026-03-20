@@ -92,6 +92,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: deploy
+
       - uses: actions/download-artifact@v4
         with:
           pattern: binary-*
@@ -108,3 +112,4 @@ jobs:
           files: |
             opensnitch-web-*
             checksums.txt
+            deploy/opensnitch-web.service
