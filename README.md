@@ -60,6 +60,23 @@ make all
 
 Requires Go 1.22+, Node.js 20+, and GCC (for SQLite). See the [Makefile](Makefile) for all available targets.
 
+### Systemd service (Linux)
+
+After building:
+
+```bash
+sudo make install
+sudo systemctl enable --now opensnitch-web
+```
+
+Installs to `/opt/opensnitch-web/` with a systemd unit. Edit `config.yaml` before starting.
+
+To uninstall (config and database preserved):
+
+```bash
+sudo make uninstall
+```
+
 ### Default credentials
 
 On first run, a unique admin password and JWT secret are auto-generated in `config.yaml`. Check the server log for the generated password.

@@ -41,8 +41,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer database.Close()
-
 	// Create default admin user
 	if err := auth.EnsureDefaultUser(database, &cfg.Auth); err != nil {
 		log.Fatalf("Failed to ensure default user: %v", err)
@@ -159,8 +157,11 @@ func main() {
 	// Wait for shutdown
 	<-sigChan
 
+	exitCode := 0
 	log.Println("Shutting down...")
 	geo.Stop()
 	httpSrv.Shutdown(context.Background())
 	grpcSrv.Stop()
+	database.Close()
+	os.Exit(exitCode)
 }
