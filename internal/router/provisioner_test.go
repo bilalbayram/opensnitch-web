@@ -26,7 +26,7 @@ func newFakeRemoteClient() *fakeRemoteClient {
 	return &fakeRemoteClient{
 		outputs: map[string]fakeRunResult{
 			"cat /etc/openwrt_release 2>/dev/null":                                                {output: "DISTRIB_ID='OpenWrt'\n"},
-			"which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING":                   {output: "INSTALLED\n"},
+			"{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING":                   {output: "INSTALLED\n"},
 			"mkdir -p /etc/conntrack-agent":                                                       {},
 			"chmod +x /etc/conntrack-agent/agent.sh /etc/init.d/conntrack-agent":                  {},
 			"/etc/init.d/conntrack-agent enable":                                                  {},
@@ -170,7 +170,7 @@ func TestProvisionOpkgRetryOnTransientFailure(t *testing.T) {
 	client := newFakeRemoteClient()
 
 	// First opkg call fails, second succeeds
-	client.outputs["which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING"] = fakeRunResult{output: "MISSING\n"}
+	client.outputs["{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING"] = fakeRunResult{output: "MISSING\n"}
 
 	callCount := 0
 	prov, _ := newTestProvisioner(t, &fakeRemoteClientWithOpkgRetry{
@@ -202,7 +202,7 @@ type fakeRemoteClientWithOpkgRetry struct {
 }
 
 func (c *fakeRemoteClientWithOpkgRetry) Run(cmd string) (string, error) {
-	if cmd == "opkg update && opkg install conntrack" {
+	if cmd == "opkg update && opkg install conntrack wget" {
 		*c.opkgCallCount++
 		if *c.opkgCallCount == 1 {
 			return "mirror unreachable", errors.New("opkg failed")

@@ -94,6 +94,40 @@ func (d *Database) SetNodeMode(addr, mode string) error {
 	return err
 }
 
+// UpsertRouterNode registers or updates a router node without overwriting
+// connection counters. This avoids the bug where UpsertNode resets cons to 0
+// on every ingest POST because the caller passes a zero-value Node.
+func (d *Database) UpsertRouterNode(addr, hostname, version, status, lastConn string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+		INSERT INTO nodes (addr, hostname, daemon_version, daemon_uptime, daemon_rules, cons, cons_dropped, version, status, last_connection, mode, source_type)
+		VALUES (?, ?, ?, 0, 0, 0, 0, '', ?, ?, 'ask', 'router')
+		ON CONFLICT(addr) DO UPDATE SET
+			hostname=excluded.hostname,
+			daemon_version=excluded.daemon_version,
+			status=excluded.status,
+			last_connection=excluded.last_connection,
+			source_type='router'`,
+		addr, hostname, version, status, lastConn,
+	)
+	return err
+}
+
+// IncrementNodeCons atomically adds to the connection counter and updates
+// the node's status and last_connection timestamp.
+func (d *Database) IncrementNodeCons(addr string, count int, lastConn string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(
+		"UPDATE nodes SET cons = cons + ?, status = 'online', last_connection = ? WHERE addr = ?",
+		count, lastConn, addr,
+	)
+	return err
+}
+
 func (d *Database) GetNodeMode(addr string) (string, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
