@@ -40,14 +40,14 @@ is_lan_ip() {
 flush_batch() {
     LINES=$(wc -l < "$BATCH_FILE" 2>/dev/null || echo 0)
     if [ "$LINES" -le 1 ]; then
-        return
+        # No events — send empty heartbeat so the server keeps us online
+        PAYLOAD='{"events":[]}'
+    else
+        # Close the JSON array (remove trailing comma via sed)
+        sed -i '$ s/,$//' "$BATCH_FILE"
+        echo ']}' >> "$BATCH_FILE"
+        PAYLOAD=$(cat "$BATCH_FILE")
     fi
-
-    # Close the JSON array (remove trailing comma via sed)
-    sed -i '$ s/,$//' "$BATCH_FILE"
-    echo ']}' >> "$BATCH_FILE"
-
-    PAYLOAD=$(cat "$BATCH_FILE")
 
     wget -q -O /dev/null \
         --post-data="$PAYLOAD" \

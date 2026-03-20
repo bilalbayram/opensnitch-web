@@ -100,26 +100,27 @@ func (p *Provisioner) Provision(ctx context.Context, req ConnectRequest) (*Provi
 	}
 	addStep("verify", "done", "OpenWrt verified")
 
-	// 3. Install conntrack if needed (OpenWrt package is "conntrack", not "conntrack-tools")
-	out, err = client.Run("which conntrack >/dev/null 2>&1 && echo INSTALLED || echo MISSING")
+	// 3. Install conntrack + GNU wget if needed.
+	// BusyBox wget lacks --header support, so the agent's POST calls fail on stock OpenWrt.
+	out, err = client.Run("{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING")
 	if err != nil {
 		addStep("dependencies", "error", fmt.Sprintf("Failed to check packages: %v", err))
 		return &ProvisionResult{Steps: steps}, err
 	}
 	if strings.TrimSpace(out) == "MISSING" {
-		out, err = client.Run("opkg update && opkg install conntrack")
+		out, err = client.Run("opkg update && opkg install conntrack wget")
 		if err != nil {
 			// Retry once — OpenWrt mirrors can be transiently unreachable
 			p.sleep(3 * time.Second)
-			out, err = client.Run("opkg update && opkg install conntrack")
+			out, err = client.Run("opkg update && opkg install conntrack wget")
 		}
 		if err != nil {
-			addStep("dependencies", "error", fmt.Sprintf("Failed to install conntrack (mirror may be unreachable): %s", strings.TrimSpace(out)))
+			addStep("dependencies", "error", fmt.Sprintf("Failed to install packages (mirror may be unreachable): %s", strings.TrimSpace(out)))
 			return &ProvisionResult{Steps: steps}, fmt.Errorf("opkg install failed: %w", err)
 		}
-		addStep("dependencies", "done", "Installed conntrack")
+		addStep("dependencies", "done", "Installed conntrack and wget")
 	} else {
-		addStep("dependencies", "done", "conntrack already available")
+		addStep("dependencies", "done", "conntrack and GNU wget already available")
 	}
 
 	apiKey := ""

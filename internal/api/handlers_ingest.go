@@ -101,15 +101,11 @@ func (a *API) handleIngest(w http.ResponseWriter, r *http.Request) {
 		accepted++
 	}
 
-	// Keep node heartbeat alive
-	a.db.UpsertNode(&db.Node{
-		Addr:          router.Addr,
-		Hostname:      router.Name,
-		DaemonVersion: "conntrack-agent",
-		Status:        db.NodeStatusOnline,
-		LastConn:      now,
-		SourceType:    "router",
-	})
+	// Keep node heartbeat alive (UpsertRouterNode never resets cons to 0)
+	a.db.UpsertRouterNode(router.Addr, router.Name, "conntrack-agent", db.NodeStatusOnline, now)
+	if accepted > 0 {
+		a.db.IncrementNodeCons(router.Addr, accepted, now)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "ok",

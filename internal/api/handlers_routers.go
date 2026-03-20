@@ -74,15 +74,8 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 	result.ServerURL = req.ServerURL
 	result.ServerURLSource = serverURLSource
 
-	// Register as a node
-	a.db.UpsertNode(&db.Node{
-		Addr:          result.Router.Addr,
-		Hostname:      result.Router.Name,
-		DaemonVersion: "conntrack-agent",
-		Status:        db.NodeStatusOnline,
-		LastConn:      time.Now().Format("2006-01-02 15:04:05"),
-		SourceType:    "router",
-	})
+	// Register as a node (UpsertRouterNode preserves existing cons counter)
+	a.db.UpsertRouterNode(result.Router.Addr, result.Router.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
 
 	a.hub.BroadcastEvent(ws.EventNodeConnected, map[string]any{
 		"addr":        result.Router.Addr,

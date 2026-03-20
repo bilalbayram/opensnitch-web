@@ -7,15 +7,27 @@ import { QuickRulePopover } from '@/components/quick-rule-popover';
 import { RuleEditorSheet } from '@/components/rule-editor-sheet';
 import type { RuleForm } from '@/components/rule-editor-sheet';
 
+interface NodeInfo {
+  addr: string;
+  hostname: string;
+}
+
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [nodeFilter, setNodeFilter] = useState('');
+  const [protocolFilter, setProtocolFilter] = useState('');
+  const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPrefill, setEditorPrefill] = useState<Partial<RuleForm> | undefined>();
   const limit = 50;
+
+  useEffect(() => {
+    api.getNodes().then(setNodes).catch(console.error);
+  }, []);
 
   const fetchConnections = () => {
     const params: Record<string, string> = {
@@ -24,6 +36,8 @@ export default function ConnectionsPage() {
     };
     if (search) params.search = search;
     if (actionFilter) params.action = actionFilter;
+    if (nodeFilter) params.node = nodeFilter;
+    if (protocolFilter) params.protocol = protocolFilter;
 
     api.getConnections(params).then((res) => {
       setConnections(res.data || []);
@@ -31,7 +45,7 @@ export default function ConnectionsPage() {
     }).catch(console.error);
   };
 
-  useEffect(() => { fetchConnections(); }, [page, actionFilter]);
+  useEffect(() => { fetchConnections(); }, [page, actionFilter, nodeFilter, protocolFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +96,30 @@ export default function ConnectionsPage() {
             className="w-full bg-card border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </form>
+        <select
+          value={nodeFilter}
+          onChange={(e) => { setNodeFilter(e.target.value); setPage(0); }}
+          className="bg-card border border-border rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">All Nodes</option>
+          {nodes.map((n) => (
+            <option key={n.addr} value={n.addr}>
+              {n.hostname || n.addr}
+            </option>
+          ))}
+        </select>
+        <select
+          value={protocolFilter}
+          onChange={(e) => { setProtocolFilter(e.target.value); setPage(0); }}
+          className="bg-card border border-border rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="">All Protocols</option>
+          <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
+          <option value="tcp6">TCP6</option>
+          <option value="udp6">UDP6</option>
+          <option value="icmp">ICMP</option>
+        </select>
         <select
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
