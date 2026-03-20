@@ -7,8 +7,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/evilsocket/opensnitch-web/internal/config"
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 )
 
 // Claims holds the JWT token claims.

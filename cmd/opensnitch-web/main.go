@@ -11,17 +11,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/evilsocket/opensnitch-web/internal/api"
-	"github.com/evilsocket/opensnitch-web/internal/auth"
-	"github.com/evilsocket/opensnitch-web/internal/config"
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/geoip"
-	"github.com/evilsocket/opensnitch-web/internal/grpcserver"
-	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
-	"github.com/evilsocket/opensnitch-web/internal/prompter"
-	"github.com/evilsocket/opensnitch-web/internal/templatesync"
-	"github.com/evilsocket/opensnitch-web/internal/version"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
+	"github.com/bilalbayram/opensnitch-web/internal/api"
+	"github.com/bilalbayram/opensnitch-web/internal/auth"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/geoip"
+	"github.com/bilalbayram/opensnitch-web/internal/grpcserver"
+	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
+	"github.com/bilalbayram/opensnitch-web/internal/prompter"
+	"github.com/bilalbayram/opensnitch-web/internal/templatesync"
+	"github.com/bilalbayram/opensnitch-web/internal/version"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
 )
 
 //go:embed all:frontend

@@ -11,15 +11,15 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 
-	"github.com/evilsocket/opensnitch-web/internal/blocklist"
-	"github.com/evilsocket/opensnitch-web/internal/config"
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	"github.com/evilsocket/opensnitch-web/internal/geoip"
-	"github.com/evilsocket/opensnitch-web/internal/nodemanager"
-	"github.com/evilsocket/opensnitch-web/internal/prompter"
-	"github.com/evilsocket/opensnitch-web/internal/router"
-	"github.com/evilsocket/opensnitch-web/internal/templatesync"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
+	"github.com/bilalbayram/opensnitch-web/internal/blocklist"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/geoip"
+	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
+	"github.com/bilalbayram/opensnitch-web/internal/prompter"
+	"github.com/bilalbayram/opensnitch-web/internal/router"
+	"github.com/bilalbayram/opensnitch-web/internal/templatesync"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
 )
 
 type routerProvisioner interface {

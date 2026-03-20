@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/evilsocket/opensnitch-web/internal/version"
+	"github.com/bilalbayram/opensnitch-web/internal/version"
 )
 
 func (a *API) handleGetVersion(w http.ResponseWriter, r *http.Request) {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/evilsocket/opensnitch-web/internal/version"
+	"github.com/bilalbayram/opensnitch-web/internal/version"
 )
 
 func TestHandleGetVersionReturnsBuildInfoOnly(t *testing.T) {

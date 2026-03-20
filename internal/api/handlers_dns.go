@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	ruleutil "github.com/bilalbayram/opensnitch-web/internal/rules"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 func (a *API) handleGetDNSDomains(w http.ResponseWriter, r *http.Request) {

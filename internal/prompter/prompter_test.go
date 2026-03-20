@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 func testConnection() *pb.Connection {

@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type promptReplyRequest struct {

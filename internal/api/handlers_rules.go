@@ -10,10 +10,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	ruleutil "github.com/evilsocket/opensnitch-web/internal/rules"
-	"github.com/evilsocket/opensnitch-web/internal/ws"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	ruleutil "github.com/bilalbayram/opensnitch-web/internal/rules"
+	"github.com/bilalbayram/opensnitch-web/internal/ws"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type ruleRequest struct {

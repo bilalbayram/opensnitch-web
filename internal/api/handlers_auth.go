@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/evilsocket/opensnitch-web/internal/auth"
+	"github.com/bilalbayram/opensnitch-web/internal/auth"
 )
 
 type loginRequest struct {

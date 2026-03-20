@@ -1,4 +1,4 @@
-module github.com/evilsocket/opensnitch-web
+module github.com/bilalbayram/opensnitch-web
 
 go 1.22
 

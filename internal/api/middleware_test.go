@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/evilsocket/opensnitch-web/internal/auth"
-	"github.com/evilsocket/opensnitch-web/internal/config"
+	"github.com/bilalbayram/opensnitch-web/internal/auth"
+	"github.com/bilalbayram/opensnitch-web/internal/config"
 )
 
 func TestJWTAuthMiddlewareAllowsWebSocketQueryToken(t *testing.T) {

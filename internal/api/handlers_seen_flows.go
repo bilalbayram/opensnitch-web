@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
 )
 
 func (a *API) handleGetSeenFlows(w http.ResponseWriter, r *http.Request) {

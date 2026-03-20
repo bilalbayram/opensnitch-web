@@ -17,7 +17,7 @@ RUN rm -rf ./cmd/opensnitch-web/frontend
 COPY --from=frontend /app/web/dist/ ./web/dist/
 COPY --from=frontend /app/web/dist/ ./cmd/opensnitch-web/frontend/
 ARG VERSION=dev
-RUN CGO_ENABLED=1 go build -ldflags "-X github.com/evilsocket/opensnitch-web/internal/version.Version=${VERSION} -X github.com/evilsocket/opensnitch-web/internal/version.BuildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o /opensnitch-web ./cmd/opensnitch-web
+RUN CGO_ENABLED=1 go build -ldflags "-X github.com/bilalbayram/opensnitch-web/internal/version.Version=${VERSION} -X github.com/bilalbayram/opensnitch-web/internal/version.BuildTime=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" -o /opensnitch-web ./cmd/opensnitch-web
 
 # Runtime
 FROM alpine:3.19

@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/evilsocket/opensnitch-web/internal/db"
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	"github.com/bilalbayram/opensnitch-web/internal/db"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 const routerHeartbeatTTL = 60 * time.Second

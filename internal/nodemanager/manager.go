@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type Manager struct {

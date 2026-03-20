@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/evilsocket/opensnitch-web/proto"
+	pb "github.com/bilalbayram/opensnitch-web/proto"
 )
 
 type NodeState struct {
