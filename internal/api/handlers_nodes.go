@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/evilsocket/opensnitch-web/internal/db"
 	pb "github.com/evilsocket/opensnitch-web/proto"
 )
 
@@ -76,9 +77,9 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 
 		status := n.Status
 		if online {
-			status = "online"
+			status = db.NodeStatusOnline
 		} else if sourceType == "router" {
-			status = "offline"
+			status = db.NodeStatusOffline
 		}
 
 		tags := nodeTags[n.Addr]
@@ -228,7 +229,7 @@ func (a *API) handleSetNodeMode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch req.Mode {
-	case "ask", "silent_allow", "silent_deny":
+	case db.ModeAsk, db.ModeSilentAllow, db.ModeSilentDeny:
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be ask, silent_allow, or silent_deny"})
 		return

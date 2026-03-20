@@ -6,12 +6,13 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/evilsocket/opensnitch-web/internal/auth"
 	"github.com/evilsocket/opensnitch-web/internal/config"
 )
 
 func TestJWTAuthMiddlewareAllowsWebSocketQueryToken(t *testing.T) {
 	cfg := config.DefaultConfig()
-	token, err := GenerateToken("admin", &cfg.Auth)
+	token, err := auth.GenerateToken("admin", &cfg.Auth)
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}
@@ -34,7 +35,7 @@ func TestJWTAuthMiddlewareAllowsWebSocketQueryToken(t *testing.T) {
 
 func TestJWTAuthMiddlewareRejectsQueryTokenOnPlainHTTP(t *testing.T) {
 	cfg := config.DefaultConfig()
-	token, err := GenerateToken("admin", &cfg.Auth)
+	token, err := auth.GenerateToken("admin", &cfg.Auth)
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
 	}

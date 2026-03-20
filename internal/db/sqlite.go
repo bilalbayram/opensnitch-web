@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -42,37 +43,28 @@ func (d *Database) Close() error {
 	return d.db.Close()
 }
 
-func (d *Database) DB() *sql.DB {
-	return d.db
-}
-
-func (d *Database) Lock() {
-	d.mu.Lock()
-}
-
-func (d *Database) Unlock() {
-	d.mu.Unlock()
-}
-
-func (d *Database) RLock() {
-	d.mu.RLock()
-}
-
-func (d *Database) RUnlock() {
-	d.mu.RUnlock()
-}
 
 func (d *Database) migrate() error {
-	// Legacy-safe pre-migrations for older DBs
-	d.db.Exec("ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN template_id INTEGER NOT NULL DEFAULT 0")
-	d.db.Exec("ALTER TABLE rules ADD COLUMN template_rule_id INTEGER NOT NULL DEFAULT 0")
-	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''")
-	d.db.Exec("ALTER TABLE nodes ADD COLUMN source_type TEXT NOT NULL DEFAULT 'opensnitch'")
+	// Legacy-safe pre-migrations for older DBs.
+	// "duplicate column name" errors are expected and ignored.
+	legacyAlters := []string{
+		"ALTER TABLE nodes ADD COLUMN mode TEXT NOT NULL DEFAULT 'ask'",
+		"ALTER TABLE rules ADD COLUMN operator_json TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE rules ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE rules ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'manual'",
+		"ALTER TABLE rules ADD COLUMN template_id INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE rules ADD COLUMN template_rule_id INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE nodes ADD COLUMN source_type TEXT NOT NULL DEFAULT 'opensnitch'",
+	}
+	for _, stmt := range legacyAlters {
+		if _, err := d.db.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				log.Printf("[db] Pre-migration warning: %v", err)
+			}
+		}
+	}
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS connections (

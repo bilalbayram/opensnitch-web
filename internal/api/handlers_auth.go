@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"time"
+
+	"github.com/evilsocket/opensnitch-web/internal/auth"
 )
 
 type loginRequest struct {
@@ -22,14 +24,13 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var hash string
-	err := a.db.DB().QueryRow("SELECT password_hash FROM web_users WHERE username = ?", req.Username).Scan(&hash)
-	if err != nil || !CheckPassword(req.Password, hash) {
+	hash, err := a.db.GetWebUserPasswordHash(req.Username)
+	if err != nil || !auth.CheckPassword(req.Password, hash) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 
-	token, err := GenerateToken(req.Username, &a.cfg.Auth)
+	token, err := auth.GenerateToken(req.Username, &a.cfg.Auth)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 		return
@@ -59,5 +60,5 @@ func (a *API) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) handleMe(w http.ResponseWriter, r *http.Request) {
 	user := r.Context().Value(userContextKey)
-	writeJSON(w, http.StatusOK, map[string]interface{}{"user": user})
+	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }

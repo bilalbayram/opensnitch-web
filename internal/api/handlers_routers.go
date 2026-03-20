@@ -79,7 +79,7 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 		Addr:          result.Router.Addr,
 		Hostname:      result.Router.Name,
 		DaemonVersion: "conntrack-agent",
-		Status:        "online",
+		Status:        db.NodeStatusOnline,
 		LastConn:      time.Now().Format("2006-01-02 15:04:05"),
 		SourceType:    "router",
 	})
@@ -190,7 +190,7 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 	if err := a.db.DeleteRouter(rt.Addr); err != nil {
 		log.Printf("[router] Failed to delete router record %s: %v", rt.Addr, err)
 	}
-	a.db.SetNodeStatus(rt.Addr, "offline")
+	a.db.SetNodeStatus(rt.Addr, db.NodeStatusOffline)
 
 	a.hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]any{
 		"addr": rt.Addr,
