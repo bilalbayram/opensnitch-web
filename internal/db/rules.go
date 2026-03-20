@@ -34,6 +34,26 @@ const (
 	RuleSourceManaged = "managed"
 )
 
+// Node mode constants control how connections are handled.
+const (
+	ModeAsk         = "ask"
+	ModeSilentAllow = "silent_allow"
+	ModeSilentDeny  = "silent_deny"
+)
+
+// Trust level constants for process trust decisions.
+const (
+	TrustLevelDefault   = "default"
+	TrustLevelTrusted   = "trusted"
+	TrustLevelUntrusted = "untrusted"
+)
+
+// Node status constants.
+const (
+	NodeStatusOnline  = "online"
+	NodeStatusOffline = "offline"
+)
+
 const upsertRuleQuery = `
 	INSERT INTO rules (time, node, name, display_name, source_kind, template_id, template_rule_id, enabled, precedence, action, duration, operator_type, operator_sensitive, operator_operand, operator_data, operator_json, description, nolog, created)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

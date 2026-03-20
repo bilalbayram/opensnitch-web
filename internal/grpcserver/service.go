@@ -183,7 +183,7 @@ func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb
 		Addr:          peerAddr,
 		Hostname:      config.GetName(),
 		DaemonVersion: config.GetVersion(),
-		Status:        "online",
+		Status:        db.NodeStatusOnline,
 		LastConn:      time.Now().Format("2006-01-02 15:04:05"),
 		DaemonRules:   int64(len(config.GetRules())),
 	})
@@ -243,7 +243,7 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 			DaemonRules:   int64(stats.Rules),
 			Cons:          int64(stats.Connections),
 			ConsDropped:   int64(stats.Dropped),
-			Status:        "online",
+			Status:        db.NodeStatusOnline,
 			LastConn:      time.Now().Format("2006-01-02 15:04:05"),
 		})
 
@@ -325,7 +325,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	// 2. Check process trust list
 	trustLevel := s.db.GetProcessTrustLevel(peerAddr, conn.ProcessPath)
 	switch trustLevel {
-	case "trusted":
+	case db.TrustLevelTrusted:
 		log.Printf("[grpc] AskRule: process %s trusted, auto-allow", conn.ProcessPath)
 		rule := &pb.Rule{
 			Name:     "trust-allow",
@@ -339,7 +339,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		}
 		s.persistConnection(peerAddr, conn, rule, "")
 		return rule, nil
-	case "untrusted":
+	case db.TrustLevelUntrusted:
 		log.Printf("[grpc] AskRule: process %s untrusted, forcing prompt", conn.ProcessPath)
 		result, err := s.prompter.AskUser(peerAddr, conn)
 		if err != nil {
@@ -353,7 +353,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 	// 3. Check node mode — auto-allow or auto-deny without prompting
 	mode, _ := s.db.GetNodeMode(peerAddr)
 	switch mode {
-	case "silent_allow":
+	case db.ModeSilentAllow:
 		log.Printf("[grpc] AskRule: silent_allow for node %s", peerAddr)
 		rule := &pb.Rule{
 			Name:     "silent-allow",
@@ -367,7 +367,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		}
 		s.persistConnection(peerAddr, conn, rule, "")
 		return rule, nil
-	case "silent_deny":
+	case db.ModeSilentDeny:
 		log.Printf("[grpc] AskRule: silent_deny for node %s", peerAddr)
 		rule := &pb.Rule{
 			Name:     "silent-deny",
@@ -516,23 +516,23 @@ func (s *UIService) Notifications(stream pb.UI_NotificationsServer) error {
 
 		case err := <-errChan:
 			log.Printf("[grpc] Notifications stream ended for %s: %v", peerAddr, err)
-			s.nodes.RemoveNode(peerAddr)
-			s.db.SetNodeStatus(peerAddr, "offline")
-			s.hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]interface{}{
-				"addr": peerAddr,
-			})
+			s.handleNodeDisconnect(peerAddr)
 			return err
 
 		case <-stream.Context().Done():
 			log.Printf("[grpc] Notifications context done for %s", peerAddr)
-			s.nodes.RemoveNode(peerAddr)
-			s.db.SetNodeStatus(peerAddr, "offline")
-			s.hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]interface{}{
-				"addr": peerAddr,
-			})
+			s.handleNodeDisconnect(peerAddr)
 			return stream.Context().Err()
 		}
 	}
+}
+
+func (s *UIService) handleNodeDisconnect(addr string) {
+	s.nodes.RemoveNode(addr)
+	s.db.SetNodeStatus(addr, db.NodeStatusOffline)
+	s.hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]interface{}{
+		"addr": addr,
+	})
 }
 
 // PostAlert is called when the daemon sends an alert

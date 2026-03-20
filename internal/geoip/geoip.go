@@ -70,7 +70,7 @@ func (r *Resolver) LookupBatch(ips []string) map[string]*db.GeoIPEntry {
 		if _, ok := result[ip]; ok {
 			continue
 		}
-		if isPrivateIP(ip) {
+		if shouldSkipIP(ip) {
 			continue
 		}
 		missing = append(missing, ip)
@@ -135,13 +135,19 @@ func (r *Resolver) fetchAndCache(ips []string) {
 		}
 
 		r.mu.Lock()
-		for _, e := range entries {
-			if len(r.cache) > 10000 {
-				for k := range r.cache {
-					delete(r.cache, k)
+		// Evict half the cache when it exceeds the limit to amortize eviction cost.
+		if len(r.cache) > 10000 {
+			i := 0
+			half := len(r.cache) / 2
+			for k := range r.cache {
+				delete(r.cache, k)
+				i++
+				if i >= half {
 					break
 				}
 			}
+		}
+		for _, e := range entries {
 			r.cache[e.IP] = e
 		}
 		r.mu.Unlock()
@@ -194,10 +200,12 @@ func (r *Resolver) fetchBatch(ips []string) ([]*db.GeoIPEntry, error) {
 	return entries, nil
 }
 
-func isPrivateIP(s string) bool {
+// shouldSkipIP returns true for IPs that should not be sent to the external
+// geo-lookup service: private, loopback, link-local, or unparseable addresses.
+func shouldSkipIP(s string) bool {
 	ip := net.ParseIP(s)
 	if ip == nil {
-		return true // unparseable, skip
+		return true
 	}
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }

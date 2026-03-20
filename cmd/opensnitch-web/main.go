@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/evilsocket/opensnitch-web/internal/api"
+	"github.com/evilsocket/opensnitch-web/internal/auth"
 	"github.com/evilsocket/opensnitch-web/internal/config"
 	"github.com/evilsocket/opensnitch-web/internal/db"
 	"github.com/evilsocket/opensnitch-web/internal/geoip"
@@ -43,7 +44,7 @@ func main() {
 	defer database.Close()
 
 	// Create default admin user
-	if err := api.EnsureDefaultUser(database, &cfg.Auth); err != nil {
+	if err := auth.EnsureDefaultUser(database, &cfg.Auth); err != nil {
 		log.Fatalf("Failed to ensure default user: %v", err)
 	}
 
@@ -82,7 +83,7 @@ func main() {
 	}
 
 	nodes.OnNodeDisconnected = func(addr string) {
-		database.SetNodeStatus(addr, "offline")
+		database.SetNodeStatus(addr, db.NodeStatusOffline)
 		hub.BroadcastEvent(ws.EventNodeDisconnected, map[string]interface{}{
 			"addr": addr,
 		})

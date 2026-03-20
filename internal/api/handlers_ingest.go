@@ -106,7 +106,7 @@ func (a *API) handleIngest(w http.ResponseWriter, r *http.Request) {
 		Addr:          router.Addr,
 		Hostname:      router.Name,
 		DaemonVersion: "conntrack-agent",
-		Status:        "online",
+		Status:        db.NodeStatusOnline,
 		LastConn:      now,
 		SourceType:    "router",
 	})

@@ -80,18 +80,18 @@ func Load(path string) (*Config, error) {
 	cfg := DefaultConfig()
 
 	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := bootstrapFromExample(path); err == nil {
-				data, err = os.ReadFile(path)
-				if err != nil {
-					return cfg, nil
-				}
-			} else {
-				return cfg, nil
-			}
-		} else {
-			return nil, err
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// If the config file doesn't exist, try bootstrapping from the example.
+	if os.IsNotExist(err) {
+		if bootstrapErr := bootstrapFromExample(path); bootstrapErr != nil {
+			return cfg, nil
+		}
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return cfg, nil
 		}
 	}
 

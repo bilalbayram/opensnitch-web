@@ -65,7 +65,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	// Public routes
