@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { BlocklistRecord } from '@/lib/api';
 import { api } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
-import { ShieldBan, RefreshCw, Trash2, Plus, X } from 'lucide-react';
+import { ShieldBan, RefreshCw, Trash2, Plus, X, AlertTriangle } from 'lucide-react';
 
 const categoryColors: Record<string, string> = {
   ads: 'bg-orange-500/10 text-orange-500',
@@ -17,6 +17,7 @@ export default function BlocklistsPage() {
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newCategory, setNewCategory] = useState('ads');
+  const [dnsPolicyEnforcing, setDnsPolicyEnforcing] = useState(0);
 
   const fetchLists = () => {
     api.getBlocklists().then(setLists).catch(console.error);
@@ -24,6 +25,9 @@ export default function BlocklistsPage() {
 
   useEffect(() => {
     fetchLists();
+    api.getStats().then((s) => {
+      setDnsPolicyEnforcing(s.dns_policy?.nodes_enforcing ?? 0);
+    }).catch(console.error);
   }, []);
 
   const handleToggle = async (id: number, enabled: boolean) => {
@@ -98,6 +102,20 @@ export default function BlocklistsPage() {
           <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add Custom</span><span className="sm:hidden">Add</span>
         </button>
       </div>
+
+      {/* DNS Policy warning */}
+      {totalEnabled > 0 && dnsPolicyEnforcing === 0 && (
+        <div className="flex items-start gap-3 bg-orange-500/5 border border-orange-500/20 rounded-xl p-4">
+          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium">DNS Policy is not enforced</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Blocklists can be bypassed via DNS-over-HTTPS (DoH) or DNS-over-TLS (DoT).{' '}
+              <a href="/dns" className="text-primary hover:underline">Enable DNS Policy</a> on the DNS page to close these bypass vectors.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Add custom form */}
       {showAdd && (

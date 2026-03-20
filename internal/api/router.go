@@ -134,6 +134,9 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Delete("/api/v1/dns/domains", api.handlePurgeDNSDomains)
 		r.Get("/api/v1/dns/servers", api.handleGetDNSServers)
 		r.Post("/api/v1/dns/server-rules", api.handleCreateDNSServerRules)
+		r.Get("/api/v1/dns/policy", api.handleGetDNSPolicy)
+		r.Post("/api/v1/dns/policy", api.handleSetDNSPolicy)
+		r.Get("/api/v1/dns/policy/providers", api.handleGetDNSPolicyProviders)
 
 		// Stats
 		r.Get("/api/v1/stats", api.handleGetGeneralStats)

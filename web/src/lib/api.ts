@@ -113,6 +113,29 @@ export interface DashboardStats {
   total: number;
   allowed: number;
   denied: number;
+  dns_policy?: {
+    nodes_enforcing: number;
+    total_nodes: number;
+  };
+}
+
+export interface DNSPolicyConfig {
+  enabled: boolean;
+  allowed_resolvers: string[];
+  block_dot: boolean;
+  block_doh_ips: boolean;
+  block_doh_hostnames: boolean;
+  enabled_at?: string;
+}
+
+export interface DNSPolicyStatus {
+  policy: DNSPolicyConfig | null;
+  rule_count: number;
+}
+
+export interface DNSPolicyProviders {
+  doh_ips: string[];
+  doh_hostnames: string[];
 }
 
 export interface RuleOperator {
@@ -535,6 +558,24 @@ export const api = {
         body: JSON.stringify(payload),
       },
     ),
+  getDNSPolicy: (node?: string) => {
+    const qs = node ? `?node=${encodeURIComponent(node)}` : "";
+    return request<DNSPolicyStatus>(`/dns/policy${qs}`);
+  },
+  setDNSPolicy: (payload: {
+    node: string;
+    enabled: boolean;
+    allowed_resolvers?: string[];
+    block_dot?: boolean;
+    block_doh_ips?: boolean;
+    block_doh_hostnames?: boolean;
+  }) =>
+    request<{ status: string; rule_count: number; policy: DNSPolicyConfig }>(
+      "/dns/policy",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  getDNSPolicyProviders: () =>
+    request<DNSPolicyProviders>("/dns/policy/providers"),
 
   // Blocklists
   getBlocklists: () => request<BlocklistRecord[]>("/blocklists"),

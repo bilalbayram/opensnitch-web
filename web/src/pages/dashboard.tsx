@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { api, type ConnectionRecord, type DashboardStats } from '@/lib/api';
 import { useAppStore, type ConnectionEvent } from '@/stores/app-store';
 import { formatNumber, cn } from '@/lib/utils';
-import { ShieldCheck, ShieldX, ShieldAlert, Server } from 'lucide-react';
+import { ShieldCheck, ShieldX, ShieldAlert, Server, Lock } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import type { GeoPoint } from '@/components/ui/geo-map';
 import { QuickRulePopover } from '@/components/quick-rule-popover';
@@ -90,6 +90,9 @@ function SummaryPanel({
               <div className="bg-destructive h-full" style={{ width: `${(denied / (allowed + denied)) * 100}%` }} />
             </div>
           </div>
+        )}
+        {(stats?.dns_policy?.nodes_enforcing ?? 0) > 0 && (
+          <StatRow icon={Lock} label="DNS Policy" value={`${stats!.dns_policy!.nodes_enforcing}/${stats!.dns_policy!.total_nodes}`} color="text-primary" />
         )}
       </div>
 

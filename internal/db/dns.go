@@ -196,3 +196,60 @@ func (d *Database) DeleteDNSAllowRules(node string) error {
 	_, err := d.db.Exec("DELETE FROM rules WHERE node = ? AND name LIKE 'dns-allow-%'", node)
 	return err
 }
+
+// GetDNSRestrictionRuleNames returns legacy DNS restriction rules and DNS policy rules for a node.
+func (d *Database) GetDNSRestrictionRuleNames(node string) ([]string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(`
+		SELECT name FROM rules
+		WHERE node = ?
+		  AND (name LIKE 'dns-allow-%' OR name = 'dns-deny-catchall' OR name LIKE 'dnspol-%')
+	`, node)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+// DeleteDNSPolicyRules removes all dnspol-* rules for a given node.
+func (d *Database) DeleteDNSPolicyRules(node string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec("DELETE FROM rules WHERE node = ? AND name LIKE 'dnspol-%'", node)
+	return err
+}
+
+// GetDNSPolicyRuleNames returns the names of all dnspol-* rules for a node.
+func (d *Database) GetDNSPolicyRuleNames(node string) ([]string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query("SELECT name FROM rules WHERE node = ? AND name LIKE 'dnspol-%'", node)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
