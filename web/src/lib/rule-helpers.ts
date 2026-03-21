@@ -10,6 +10,18 @@ export interface ConnectionLike {
   process: string;
   protocol: string;
   uid: number;
+  router_managed?: boolean;
+}
+
+export function isDeviceSource(process: string): boolean {
+  return process.startsWith("device:");
+}
+
+export function formatProcessLabel(process: string): string {
+  if (!isDeviceSource(process)) {
+    return process;
+  }
+  return `Source device ${process.slice("device:".length)}`;
 }
 
 /** Pick the best operand and data from a connection */
@@ -17,6 +29,9 @@ export function smartOperandFromConnection(conn: ConnectionLike): {
   operand: string;
   data: string;
 } {
+  if (conn.router_managed) {
+    return { operand: "dest.ip", data: conn.dst_ip };
+  }
   if (conn.dst_host) {
     return { operand: "dest.host", data: conn.dst_host };
   }

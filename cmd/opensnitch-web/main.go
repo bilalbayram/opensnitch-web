@@ -55,22 +55,27 @@ func main() {
 	// Wire up prompter → WebSocket broadcasts
 	p.OnNewPrompt = func(prompt *prompter.PendingPrompt) {
 		conn := prompt.Connection
+		routerManaged := false
+		if router, err := database.GetRouterByLinkedNodeAddr(prompt.NodeAddr); err == nil {
+			routerManaged = router.DaemonMode == db.RouterDaemonModeRouterDaemon
+		}
 		hub.BroadcastEvent(ws.EventPromptRequest, map[string]interface{}{
-			"id":         prompt.ID,
-			"node_addr":  prompt.NodeAddr,
-			"created_at": prompt.CreatedAt.Format("2006-01-02 15:04:05"),
-			"process":    conn.GetProcessPath(),
-			"dst_host":   conn.GetDstHost(),
-			"dst_ip":     conn.GetDstIp(),
-			"dst_port":   conn.GetDstPort(),
-			"protocol":   conn.GetProtocol(),
-			"src_ip":     conn.GetSrcIp(),
-			"src_port":   conn.GetSrcPort(),
-			"uid":        conn.GetUserId(),
-			"pid":        conn.GetProcessId(),
-			"args":       conn.GetProcessArgs(),
-			"cwd":        conn.GetProcessCwd(),
-			"checksums":  conn.GetProcessChecksums(),
+			"id":             prompt.ID,
+			"node_addr":      prompt.NodeAddr,
+			"created_at":     prompt.CreatedAt.Format("2006-01-02 15:04:05"),
+			"router_managed": routerManaged,
+			"process":        conn.GetProcessPath(),
+			"dst_host":       conn.GetDstHost(),
+			"dst_ip":         conn.GetDstIp(),
+			"dst_port":       conn.GetDstPort(),
+			"protocol":       conn.GetProtocol(),
+			"src_ip":         conn.GetSrcIp(),
+			"src_port":       conn.GetSrcPort(),
+			"uid":            conn.GetUserId(),
+			"pid":            conn.GetProcessId(),
+			"args":           conn.GetProcessArgs(),
+			"cwd":            conn.GetProcessCwd(),
+			"checksums":      conn.GetProcessChecksums(),
 		})
 	}
 

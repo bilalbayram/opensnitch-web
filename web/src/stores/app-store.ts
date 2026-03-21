@@ -24,6 +24,7 @@ export interface Prompt {
   id: string;
   node_addr: string;
   created_at: string;
+  router_managed: boolean;
   process: string;
   dst_host: string;
   dst_ip: string;

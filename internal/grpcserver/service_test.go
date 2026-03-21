@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 
 	"github.com/bilalbayram/opensnitch-web/internal/db"
 	"github.com/bilalbayram/opensnitch-web/internal/nodemanager"
@@ -76,6 +79,11 @@ func askRuleContext(addr string) context.Context {
 	return peer.NewContext(context.Background(), &peer.Peer{Addr: serviceTestAddr(addr)})
 }
 
+func routerMetadataContext(addr, apiKey string) context.Context {
+	ctx := askRuleContext(addr)
+	return metadata.NewIncomingContext(ctx, metadata.Pairs(routerAPIKeyHeader, apiKey))
+}
+
 func testConnection() *pb.Connection {
 	return &pb.Connection{
 		ProcessPath: testProcessPath,
@@ -112,6 +120,78 @@ func replyRuleWithDuration(action, duration string) *pb.Rule {
 			Operand: "process.path",
 			Data:    testProcessPath,
 		},
+	}
+}
+
+func TestSubscribeUsesRouterAPIKeyIdentity(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+
+	if err := env.database.InsertRouter(&db.Router{
+		Name:           "router-a",
+		Addr:           "router-a",
+		SSHPort:        22,
+		SSHUser:        "root",
+		APIKey:         "router-secret",
+		LANSubnet:      "192.168.1.0/24",
+		DaemonMode:     db.RouterDaemonModeRouterDaemon,
+		LinkedNodeAddr: "router-a",
+		Status:         "active",
+	}); err != nil {
+		t.Fatalf("insert router: %v", err)
+	}
+
+	ctx, err := env.service.resolveRouterNodeContext(routerMetadataContext("10.0.0.20:50051", "router-secret"))
+	if err != nil {
+		t.Fatalf("resolve router identity: %v", err)
+	}
+
+	if _, err := env.service.Subscribe(ctx, &pb.ClientConfig{
+		Name:    "openwrt-a",
+		Version: "opensnitchd-router/test",
+	}); err != nil {
+		t.Fatalf("subscribe router-daemon: %v", err)
+	}
+
+	if env.service.nodes.GetNode("router-a") == nil {
+		t.Fatal("expected router identity to resolve to router-a")
+	}
+	if env.service.nodes.GetNode("10.0.0.20:50051") != nil {
+		t.Fatal("expected peer address not to be used as node identity")
+	}
+
+	node, err := env.database.GetNode("router-a")
+	if err != nil {
+		t.Fatalf("load resolved node: %v", err)
+	}
+	if node.Hostname != "openwrt-a" {
+		t.Fatalf("expected resolved node hostname to be updated, got %+v", node)
+	}
+}
+
+func TestSubscribeRejectsInvalidRouterAPIKey(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+
+	_, err := env.service.resolveRouterNodeContext(routerMetadataContext("10.0.0.20:50051", "bad-key"))
+	if err == nil {
+		t.Fatal("expected invalid router api key to be rejected")
+	}
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected unauthenticated, got %v", status.Code(err))
+	}
+}
+
+func TestSubscribeWithoutRouterMetadataKeepsLegacyPeerIdentity(t *testing.T) {
+	env := newServiceTestEnv(t, 1)
+
+	if _, err := env.service.Subscribe(askRuleContext("desktop-a:50051"), &pb.ClientConfig{
+		Name:    "desktop-a",
+		Version: "1.0.0",
+	}); err != nil {
+		t.Fatalf("subscribe legacy node: %v", err)
+	}
+
+	if env.service.nodes.GetNode("desktop-a:50051") == nil {
+		t.Fatal("expected peer identity for legacy daemon")
 	}
 }
 

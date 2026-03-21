@@ -49,6 +49,13 @@ func peerAddrFromCtx(ctx context.Context) string {
 	return p.Addr.String()
 }
 
+func nodeAddrFromCtx(ctx context.Context) string {
+	if resolved := resolvedNodeAddrFromContext(ctx); resolved != "" {
+		return resolved
+	}
+	return peerAddrFromCtx(ctx)
+}
+
 func normalizeEventTime(value string, unixnano int64) string {
 	if unixnano > 0 {
 		return ruleutil.FormatStoredTime(time.Unix(0, unixnano))
@@ -174,13 +181,14 @@ func formatAlertBody(alert *pb.Alert) string {
 // Subscribe is called when a daemon first connects.
 func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb.ClientConfig, error) {
 	peerAddr := peerAddrFromCtx(ctx)
+	nodeAddr := nodeAddrFromCtx(ctx)
 	log.Printf("[grpc] Subscribe from %s (name: %s, version: %s, rules: %d)",
 		peerAddr, config.GetName(), config.GetVersion(), len(config.GetRules()))
 
-	s.nodes.AddNode(peerAddr, config)
+	s.nodes.AddNode(nodeAddr, config)
 
 	s.db.UpsertNode(&db.Node{
-		Addr:          peerAddr,
+		Addr:          nodeAddr,
 		Hostname:      config.GetName(),
 		DaemonVersion: config.GetVersion(),
 		Status:        db.NodeStatusOnline,
@@ -192,29 +200,29 @@ func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb
 	snapshotRules := make([]*db.DBRule, 0, len(config.GetRules()))
 	observedAt := time.Now()
 	for _, r := range config.GetRules() {
-		dbRule, err := ruleutil.ProtoToDBRule(peerAddr, observedAt, r)
+		dbRule, err := ruleutil.ProtoToDBRule(nodeAddr, observedAt, r)
 		if err != nil {
-			log.Printf("[grpc] Failed to convert rule %q from %s: %v", r.GetName(), peerAddr, err)
+			log.Printf("[grpc] Failed to convert rule %q from %s: %v", r.GetName(), nodeAddr, err)
 			continue
 		}
 		if s.templateSync != nil {
 			if err := s.templateSync.DecorateStoredRule(dbRule); err != nil {
-				log.Printf("[grpc] Failed to decorate stored rule %q from %s: %v", r.GetName(), peerAddr, err)
+				log.Printf("[grpc] Failed to decorate stored rule %q from %s: %v", r.GetName(), nodeAddr, err)
 			}
 		}
 		snapshotRules = append(snapshotRules, dbRule)
 	}
-	if err := s.db.ReplaceNodeRulesSnapshot(peerAddr, snapshotRules); err != nil {
+	if err := s.db.ReplaceNodeRulesSnapshot(nodeAddr, snapshotRules); err != nil {
 		return nil, err
 	}
 	if s.templateSync != nil {
-		if err := s.templateSync.ReconcileNode(peerAddr); err != nil {
-			log.Printf("[grpc] Failed to reconcile templates for %s: %v", peerAddr, err)
+		if err := s.templateSync.ReconcileNode(nodeAddr); err != nil {
+			log.Printf("[grpc] Failed to reconcile templates for %s: %v", nodeAddr, err)
 		}
 	}
 
 	s.hub.BroadcastEvent(ws.EventNodeConnected, map[string]interface{}{
-		"addr":     peerAddr,
+		"addr":     nodeAddr,
 		"hostname": config.GetName(),
 		"version":  config.GetVersion(),
 	})
@@ -224,9 +232,9 @@ func (s *UIService) Subscribe(ctx context.Context, config *pb.ClientConfig) (*pb
 
 // Ping is the heartbeat — daemon sends stats every ~1s
 func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingReply, error) {
-	peerAddr := peerAddrFromCtx(ctx)
+	nodeAddr := nodeAddrFromCtx(ctx)
 
-	node := s.nodes.GetNode(peerAddr)
+	node := s.nodes.GetNode(nodeAddr)
 	if node == nil {
 		return &pb.PingReply{Id: req.Id}, nil
 	}
@@ -236,7 +244,7 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 	stats := req.GetStats()
 	if stats != nil {
 		s.db.UpsertNode(&db.Node{
-			Addr:          peerAddr,
+			Addr:          nodeAddr,
 			Hostname:      node.Hostname,
 			DaemonVersion: stats.DaemonVersion,
 			DaemonUptime:  int64(stats.Uptime),
@@ -252,29 +260,29 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 			if evt.Connection == nil {
 				continue
 			}
-			s.persistConnection(peerAddr, evt.Connection, evt.Rule, normalizeEventTime(evt.Time, evt.Unixnano))
+			s.persistConnection(nodeAddr, evt.Connection, evt.Rule, normalizeEventTime(evt.Time, evt.Unixnano))
 		}
 
 		// Update stats tables
 		for k, v := range stats.ByHost {
-			s.db.UpsertStat("hosts", k, peerAddr, int64(v))
+			s.db.UpsertStat("hosts", k, nodeAddr, int64(v))
 		}
 		for k, v := range stats.ByExecutable {
-			s.db.UpsertStat("procs", k, peerAddr, int64(v))
+			s.db.UpsertStat("procs", k, nodeAddr, int64(v))
 		}
 		for k, v := range stats.ByAddress {
-			s.db.UpsertStat("addrs", k, peerAddr, int64(v))
+			s.db.UpsertStat("addrs", k, nodeAddr, int64(v))
 		}
 		for k, v := range stats.ByPort {
-			s.db.UpsertStat("ports", k, peerAddr, int64(v))
+			s.db.UpsertStat("ports", k, nodeAddr, int64(v))
 		}
 		for k, v := range stats.ByUid {
-			s.db.UpsertStat("users", k, peerAddr, int64(v))
+			s.db.UpsertStat("users", k, nodeAddr, int64(v))
 		}
 
 		// Broadcast stats to browsers
 		s.hub.BroadcastEvent(ws.EventStatsUpdate, map[string]interface{}{
-			"node":           peerAddr,
+			"node":           nodeAddr,
 			"daemon_version": stats.DaemonVersion,
 			"uptime":         stats.Uptime,
 			"rules":          stats.Rules,
@@ -301,9 +309,10 @@ func (s *UIService) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRepl
 // Pipeline: blocklist check → trust list check → node mode check → prompt user.
 func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule, error) {
 	peerAddr := peerAddrFromCtx(ctx)
+	nodeAddr := nodeAddrFromCtx(ctx)
 	log.Printf("[grpc] AskRule from %s: %s -> %s:%d (%s)",
 		peerAddr, conn.ProcessPath, conn.DstHost, conn.DstPort, conn.Protocol)
-	seenFlowKey, learningKey, trackSeenFlow := buildSeenFlowKey(peerAddr, conn)
+	seenFlowKey, learningKey, trackSeenFlow := buildSeenFlowKey(nodeAddr, conn)
 
 	// 1. Check blocklist — auto-deny blocked domains (even in silent_allow mode)
 	if conn.DstHost != "" && s.db.IsDomainBlocked(conn.DstHost) {
@@ -318,12 +327,12 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Data:    conn.DstHost,
 			},
 		}
-		s.persistConnection(peerAddr, conn, rule, "")
+		s.persistConnection(nodeAddr, conn, rule, "")
 		return rule, nil
 	}
 
 	// 2. Check process trust list
-	trustLevel := s.db.GetProcessTrustLevel(peerAddr, conn.ProcessPath)
+	trustLevel := s.db.GetProcessTrustLevel(nodeAddr, conn.ProcessPath)
 	switch trustLevel {
 	case db.TrustLevelTrusted:
 		log.Printf("[grpc] AskRule: process %s trusted, auto-allow", conn.ProcessPath)
@@ -337,24 +346,24 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Data:    conn.ProcessPath,
 			},
 		}
-		s.persistConnection(peerAddr, conn, rule, "")
+		s.persistConnection(nodeAddr, conn, rule, "")
 		return rule, nil
 	case db.TrustLevelUntrusted:
 		log.Printf("[grpc] AskRule: process %s untrusted, forcing prompt", conn.ProcessPath)
-		result, err := s.prompter.AskUser(peerAddr, conn)
+		result, err := s.prompter.AskUser(nodeAddr, conn)
 		if err != nil {
 			return nil, err
 		}
 		s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
-		s.persistConnection(peerAddr, conn, result.Rule, "")
+		s.persistConnection(nodeAddr, conn, result.Rule, "")
 		return result.Rule, nil
 	}
 
 	// 3. Check node mode — auto-allow or auto-deny without prompting
-	mode, _ := s.db.GetNodeMode(peerAddr)
+	mode, _ := s.db.GetNodeMode(nodeAddr)
 	switch mode {
 	case db.ModeSilentAllow:
-		log.Printf("[grpc] AskRule: silent_allow for node %s", peerAddr)
+		log.Printf("[grpc] AskRule: silent_allow for node %s", nodeAddr)
 		rule := &pb.Rule{
 			Name:     "silent-allow",
 			Action:   "allow",
@@ -365,10 +374,10 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Data:    conn.DstHost,
 			},
 		}
-		s.persistConnection(peerAddr, conn, rule, "")
+		s.persistConnection(nodeAddr, conn, rule, "")
 		return rule, nil
 	case db.ModeSilentDeny:
-		log.Printf("[grpc] AskRule: silent_deny for node %s", peerAddr)
+		log.Printf("[grpc] AskRule: silent_deny for node %s", nodeAddr)
 		rule := &pb.Rule{
 			Name:     "silent-deny",
 			Action:   "deny",
@@ -379,7 +388,7 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 				Data:    conn.DstHost,
 			},
 		}
-		s.persistConnection(peerAddr, conn, rule, "")
+		s.persistConnection(nodeAddr, conn, rule, "")
 		return rule, nil
 	}
 
@@ -388,30 +397,30 @@ func (s *UIService) AskRule(ctx context.Context, conn *pb.Connection) (*pb.Rule,
 		now := time.Now()
 		flow, err := s.db.GetSeenFlow(seenFlowKey)
 		if err != nil {
-			log.Printf("[grpc] AskRule: seen flow lookup failed for %s: %v", peerAddr, err)
+			log.Printf("[grpc] AskRule: seen flow lookup failed for %s: %v", nodeAddr, err)
 		} else if flow != nil {
 			if flow.IsExpired(now) {
 				if err := s.db.DeleteSeenFlow(seenFlowKey); err != nil {
-					log.Printf("[grpc] AskRule: failed to delete expired seen flow for %s: %v", peerAddr, err)
+					log.Printf("[grpc] AskRule: failed to delete expired seen flow for %s: %v", nodeAddr, err)
 				}
 			} else {
 				expiresAt, _ := flow.ExpiryTime()
 				log.Printf("[grpc] AskRule: reusing remembered %s decision for %s -> %s:%d (%s)",
 					flow.Action, conn.ProcessPath, flow.Destination, flow.DstPort, flow.Protocol)
 				if err := s.db.UpsertSeenFlow(seenFlowKey, flow.Action, flow.SourceRuleName, now, expiresAt); err != nil {
-					log.Printf("[grpc] AskRule: failed to refresh seen flow for %s: %v", peerAddr, err)
+					log.Printf("[grpc] AskRule: failed to refresh seen flow for %s: %v", nodeAddr, err)
 				}
 				return ruleutil.BuildSeenFlowRule(learningKey, flow.Action), nil
 			}
 		}
 	}
 
-	result, err := s.prompter.AskUser(peerAddr, conn)
+	result, err := s.prompter.AskUser(nodeAddr, conn)
 	if err != nil {
 		return nil, err
 	}
 	s.persistPromptDecision(seenFlowKey, result, trackSeenFlow)
-	s.persistConnection(peerAddr, conn, result.Rule, "")
+	s.persistConnection(nodeAddr, conn, result.Rule, "")
 
 	return result.Rule, nil
 }
@@ -471,17 +480,14 @@ func seenFlowRetention(rule *pb.Rule, now time.Time) (time.Time, bool) {
 
 // Notifications is the bidirectional streaming RPC.
 func (s *UIService) Notifications(stream pb.UI_NotificationsServer) error {
-	peerAddr := ""
-	if p, ok := peer.FromContext(stream.Context()); ok {
-		peerAddr = p.Addr.String()
-	}
+	nodeAddr := nodeAddrFromCtx(stream.Context())
 
-	node := s.nodes.GetNode(peerAddr)
+	node := s.nodes.GetNode(nodeAddr)
 	if node == nil {
-		return fmt.Errorf("node %s not registered", peerAddr)
+		return fmt.Errorf("node %s not registered", nodeAddr)
 	}
 
-	log.Printf("[grpc] Notifications stream opened for %s", peerAddr)
+	log.Printf("[grpc] Notifications stream opened for %s", nodeAddr)
 
 	// Read replies from daemon in a goroutine
 	errChan := make(chan error, 1)
@@ -496,7 +502,7 @@ func (s *UIService) Notifications(stream pb.UI_NotificationsServer) error {
 				errChan <- err
 				return
 			}
-			log.Printf("[grpc] NotificationReply from %s: id=%d code=%v", peerAddr, reply.Id, reply.Code)
+			log.Printf("[grpc] NotificationReply from %s: id=%d code=%v", nodeAddr, reply.Id, reply.Code)
 		}
 	}()
 
@@ -505,23 +511,23 @@ func (s *UIService) Notifications(stream pb.UI_NotificationsServer) error {
 		select {
 		case notif := <-node.NotifyChan:
 			if notif == nil || notif.Type == -1 {
-				log.Printf("[grpc] Notifications stream closing for %s (sentinel)", peerAddr)
+				log.Printf("[grpc] Notifications stream closing for %s (sentinel)", nodeAddr)
 				return nil
 			}
 			if err := stream.Send(notif); err != nil {
-				log.Printf("[grpc] Error sending notification to %s: %v", peerAddr, err)
+				log.Printf("[grpc] Error sending notification to %s: %v", nodeAddr, err)
 				return err
 			}
-			log.Printf("[grpc] Sent notification to %s: type=%v", peerAddr, notif.Type)
+			log.Printf("[grpc] Sent notification to %s: type=%v", nodeAddr, notif.Type)
 
 		case err := <-errChan:
-			log.Printf("[grpc] Notifications stream ended for %s: %v", peerAddr, err)
-			s.handleNodeDisconnect(peerAddr)
+			log.Printf("[grpc] Notifications stream ended for %s: %v", nodeAddr, err)
+			s.handleNodeDisconnect(nodeAddr)
 			return err
 
 		case <-stream.Context().Done():
-			log.Printf("[grpc] Notifications context done for %s", peerAddr)
-			s.handleNodeDisconnect(peerAddr)
+			log.Printf("[grpc] Notifications context done for %s", nodeAddr)
+			s.handleNodeDisconnect(nodeAddr)
 			return stream.Context().Err()
 		}
 	}
@@ -538,13 +544,14 @@ func (s *UIService) handleNodeDisconnect(addr string) {
 // PostAlert is called when the daemon sends an alert
 func (s *UIService) PostAlert(ctx context.Context, alert *pb.Alert) (*pb.MsgResponse, error) {
 	peerAddr := peerAddrFromCtx(ctx)
+	nodeAddr := nodeAddrFromCtx(ctx)
 	log.Printf("[grpc] PostAlert from %s: type=%v priority=%v what=%v", peerAddr, alert.Type, alert.Priority, alert.What)
 
 	body := formatAlertBody(alert)
 
 	s.db.InsertAlert(&db.DBAlert{
 		Time:     time.Now().Format("2006-01-02 15:04:05"),
-		Node:     peerAddr,
+		Node:     nodeAddr,
 		Type:     int(alert.Type),
 		Action:   int(alert.Action),
 		Priority: int(alert.Priority),
@@ -554,7 +561,7 @@ func (s *UIService) PostAlert(ctx context.Context, alert *pb.Alert) (*pb.MsgResp
 	})
 
 	s.hub.BroadcastEvent(ws.EventNewAlert, map[string]interface{}{
-		"node":     peerAddr,
+		"node":     nodeAddr,
 		"type":     alert.Type,
 		"priority": alert.Priority,
 		"what":     alert.What,

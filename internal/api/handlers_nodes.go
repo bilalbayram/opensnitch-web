@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -46,6 +47,18 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 
 	// Enrich with live status from node manager
 	liveNodes := a.nodes.GetAllNodes()
+	routers, err := a.db.GetRouters()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	linkedRouters := make(map[string]db.Router, len(routers))
+	for _, router := range routers {
+		if router.DaemonMode == db.RouterDaemonModeRouterDaemon && router.LinkedNodeAddr != "" {
+			linkedRouters[router.LinkedNodeAddr] = router
+		}
+	}
+
 	type enrichedNode struct {
 		Addr                string   `json:"addr"`
 		Hostname            string   `json:"hostname"`
@@ -59,6 +72,8 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 		Online              bool     `json:"online"`
 		Mode                string   `json:"mode"`
 		SourceType          string   `json:"source_type"`
+		RouterManaged       bool     `json:"router_managed"`
+		LinkedRouterAddr    string   `json:"linked_router_addr"`
 		Tags                []string `json:"tags"`
 		TemplateSyncPending bool     `json:"template_sync_pending"`
 		TemplateSyncError   string   `json:"template_sync_error"`
@@ -87,6 +102,7 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			tags = []string{}
 		}
 		syncState := syncStates[n.Addr]
+		linkedRouter := linkedRouters[n.Addr]
 		result[i] = enrichedNode{
 			Addr:                n.Addr,
 			Hostname:            n.Hostname,
@@ -100,6 +116,8 @@ func (a *API) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 			Online:              online,
 			Mode:                n.Mode,
 			SourceType:          sourceType,
+			RouterManaged:       linkedRouter.Addr != "",
+			LinkedRouterAddr:    linkedRouter.Addr,
 			Tags:                tags,
 			TemplateSyncPending: syncState.Pending,
 			TemplateSyncError:   syncState.Error,
@@ -134,6 +152,16 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 	if sourceType == "" {
 		sourceType = "opensnitch"
 	}
+	linkedRouter, err := a.db.GetRouterByLinkedNodeAddr(addr)
+	if err != nil && err != sql.ErrNoRows {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	routerManaged := linkedRouter != nil && linkedRouter.DaemonMode == db.RouterDaemonModeRouterDaemon
+	linkedRouterAddr := ""
+	if linkedRouter != nil {
+		linkedRouterAddr = linkedRouter.Addr
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"addr":                  node.Addr,
 		"hostname":              node.Hostname,
@@ -147,6 +175,8 @@ func (a *API) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		"last_connection":       node.LastConn,
 		"mode":                  node.Mode,
 		"source_type":           sourceType,
+		"router_managed":        routerManaged,
+		"linked_router_addr":    linkedRouterAddr,
 		"tags":                  tags,
 		"template_sync_pending": syncState.Pending,
 		"template_sync_error":   syncState.Error,
@@ -176,6 +206,9 @@ func (a *API) handleReplaceNodeTags(w http.ResponseWriter, r *http.Request) {
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileNode(addr); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}

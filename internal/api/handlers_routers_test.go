@@ -29,6 +29,18 @@ func (s *stubRouterProvisioner) Deprovision(ctx context.Context, addr string, ss
 	return s.steps, s.err
 }
 
+func (s *stubRouterProvisioner) CheckCapabilities(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) (*routerpkg.CapabilityCheckResult, error) {
+	return &routerpkg.CapabilityCheckResult{}, s.err
+}
+
+func (s *stubRouterProvisioner) ProvisionDaemon(ctx context.Context, req routerpkg.DaemonRequest) (*routerpkg.ProvisionResult, error) {
+	return &routerpkg.ProvisionResult{Steps: s.steps}, s.err
+}
+
+func (s *stubRouterProvisioner) DeprovisionDaemon(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]routerpkg.ProvisionStep, error) {
+	return s.steps, s.err
+}
+
 func seedRouterRecord(t *testing.T, env *apiTestEnv, addr string, lastConn time.Time) {
 	t.Helper()
 

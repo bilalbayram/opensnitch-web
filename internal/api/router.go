@@ -25,6 +25,9 @@ import (
 type routerProvisioner interface {
 	Provision(ctx context.Context, req router.ConnectRequest) (*router.ProvisionResult, error)
 	Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]router.ProvisionStep, error)
+	CheckCapabilities(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) (*router.CapabilityCheckResult, error)
+	ProvisionDaemon(ctx context.Context, req router.DaemonRequest) (*router.ProvisionResult, error)
+	DeprovisionDaemon(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]router.ProvisionStep, error)
 }
 
 type API struct {
@@ -50,7 +53,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		templateSync: templateSync,
 		fetcher:      blocklist.NewFetcher(),
 		geoResolver:  geo,
-		routerProv:   router.NewProvisioner(database),
+		routerProv:   router.NewProvisioner(database).WithRuntime(nodes, cfg),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
@@ -166,6 +169,9 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Post("/api/v1/routers/suggest-url", api.handleSuggestServerURL)
 		r.Post("/api/v1/routers/connect", api.handleConnectRouter)
 		r.Get("/api/v1/routers", api.handleGetRouters)
+		r.Post("/api/v1/routers/{addr}/capabilities", api.handleRouterCapabilities)
+		r.Post("/api/v1/routers/{addr}/upgrade", api.handleUpgradeRouter)
+		r.Post("/api/v1/routers/{addr}/downgrade", api.handleDowngradeRouter)
 		r.Post("/api/v1/routers/{addr}/disconnect", api.handleDisconnectRouter)
 
 		// Prompts
