@@ -41,6 +41,24 @@ export const operandLabels: Record<string, string> = {
   protocol: "Protocol",
 };
 
+const standardOperandOptions = [
+  { value: "process.path", label: "Process Path" },
+  { value: "process.command", label: "Process Command" },
+  { value: "dest.host", label: "Dest Host" },
+  { value: "dest.ip", label: "Dest IP" },
+  { value: "dest.port", label: "Dest Port" },
+  { value: "user.id", label: "User ID" },
+  { value: "protocol", label: "Protocol" },
+];
+
+const routerManagedOperandOptions = [
+  { value: "process.path", label: "Process Path" },
+  { value: "dest.ip", label: "Dest IP" },
+  { value: "dest.port", label: "Dest Port" },
+  { value: "user.id", label: "User ID" },
+  { value: "protocol", label: "Protocol" },
+];
+
 interface RuleEditorSheetProps {
   open: boolean;
   onClose: () => void;
@@ -48,6 +66,7 @@ interface RuleEditorSheetProps {
   editing?: boolean;
   onSave: (form: RuleForm) => Promise<void>;
   title?: string;
+  routerManaged?: boolean;
 }
 
 export function RuleEditorSheet({
@@ -57,14 +76,26 @@ export function RuleEditorSheet({
   editing = false,
   onSave,
   title,
+  routerManaged = false,
 }: RuleEditorSheetProps) {
   const [form, setForm] = useState<RuleForm>({ ...defaultForm });
+  const operandOptions = routerManaged
+    ? routerManagedOperandOptions
+    : standardOperandOptions;
 
   useEffect(() => {
     if (open) {
-      setForm({ ...defaultForm, ...initialValues });
+      const next = { ...defaultForm, ...initialValues };
+      if (
+        routerManaged &&
+        !operandOptions.some((option) => option.value === next.operator_operand)
+      ) {
+        next.operator_operand = "dest.ip";
+        next.operator_data = next.operator_operand === "dest.ip" ? next.operator_data : "";
+      }
+      setForm(next);
     }
-  }, [open, initialValues]);
+  }, [open, initialValues, operandOptions, routerManaged]);
 
   const handleSave = async () => {
     await onSave(form);
@@ -96,6 +127,13 @@ export function RuleEditorSheet({
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           Target node: {form.node || "All nodes"}
         </div>
+        {routerManaged && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Router-managed nodes only support process path, destination IP,
+            destination port, protocol, and user ID operands. Forwarded traffic
+            in v1 is device and network rule based, with no live prompts.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -144,13 +182,11 @@ export function RuleEditorSheet({
               }
               className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm mt-1"
             >
-              <option value="process.path">Process Path</option>
-              <option value="process.command">Process Command</option>
-              <option value="dest.host">Dest Host</option>
-              <option value="dest.ip">Dest IP</option>
-              <option value="dest.port">Dest Port</option>
-              <option value="user.id">User ID</option>
-              <option value="protocol">Protocol</option>
+              {operandOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -162,7 +198,11 @@ export function RuleEditorSheet({
             onChange={(e) =>
               setForm({ ...form, operator_data: e.target.value })
             }
-            placeholder="e.g. /usr/bin/curl or google.com"
+            placeholder={
+              routerManaged
+                ? "e.g. /usr/bin/curl, 1.1.1.1, 443"
+                : "e.g. /usr/bin/curl or google.com"
+            }
             className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm mt-1"
           />
         </div>

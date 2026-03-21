@@ -176,6 +176,16 @@ func (s *Service) ReconcileNode(node string) error {
 }
 
 func (s *Service) ResolveManagedRules(node string) ([]*db.DBRule, []*pb.Rule, error) {
+	routerManaged := false
+	routerRecord, err := s.db.GetRouterByLinkedNodeAddr(node)
+	switch {
+	case err == nil:
+		routerManaged = routerRecord.DaemonMode == db.RouterDaemonModeRouterDaemon
+	case err == sql.ErrNoRows:
+	default:
+		return nil, nil, err
+	}
+
 	nodeTags, err := s.db.GetNodeTags(node)
 	if err != nil {
 		return nil, nil, err
@@ -218,6 +228,11 @@ func (s *Service) ResolveManagedRules(node string) ([]*db.DBRule, []*pb.Rule, er
 			dbRule, protoRule, err := ruleutil.MaterializeTemplateRule(node, attachment.TemplateID, &templateRule, now)
 			if err != nil {
 				return nil, nil, err
+			}
+			if routerManaged {
+				if err := ruleutil.ValidateRouterManagedRule(protoRule); err != nil {
+					return nil, nil, err
+				}
 			}
 
 			canonicalOperator, err := ruleutil.CanonicalOperatorJSONFromRule(dbRule)

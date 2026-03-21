@@ -81,11 +81,16 @@ jobs:
           BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
           LDFLAGS="-X github.com/bilalbayram/opensnitch-web/internal/version.Version=${VERSION} -X github.com/bilalbayram/opensnitch-web/internal/version.BuildTime=${BUILD_TIME}"
           go build -ldflags "${LDFLAGS}" -o opensnitch-web-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/opensnitch-web
+          if [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "${LDFLAGS}" -o opensnitchd-router-linux-arm64 ./cmd/opensnitchd-router
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: opensnitch-web-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            opensnitch-web-${{ matrix.goos }}-${{ matrix.goarch }}
+            opensnitchd-router-*
 
   release:
     name: Create Release
@@ -102,14 +107,15 @@ jobs:
           merge-multiple: true
 
       - name: Generate checksums
-        run: sha256sum opensnitch-web-* > checksums.txt
+        run: sha256sum opensnitch-web-* opensnitchd-router-* > checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-rc') }}
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
           files: |
             opensnitch-web-*
+            opensnitchd-router-*
             checksums.txt
             deploy/opensnitch-web.service

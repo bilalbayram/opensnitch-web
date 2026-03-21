@@ -1,6 +1,7 @@
 server:
   http_addr: ":8080"
   grpc_addr: "0.0.0.0:50051"
+  grpc_public_addr: ""
   grpc_unix: "/tmp/osui.sock"
 
 database:

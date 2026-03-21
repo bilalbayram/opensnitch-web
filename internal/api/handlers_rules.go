@@ -129,6 +129,10 @@ func (a *API) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	protoRule := buildSimpleRule(req)
+	if err := a.validateRouterManagedRuleTarget(req.Node, protoRule); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	dbRule, err := ruleutil.ProtoToDBRule(req.Node, time.Now(), protoRule)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -192,6 +196,10 @@ func (a *API) handleUpdateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	protoRule := buildSimpleRule(req)
+	if err := a.validateRouterManagedRuleTarget(req.Node, protoRule); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	dbRule, err := ruleutil.ProtoToDBRule(req.Node, time.Now(), protoRule)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -283,6 +291,10 @@ func (a *API) handleGenerateRulesApply(w http.ResponseWriter, r *http.Request) {
 		protoRule, err := buildProtoRuleFromResponse(proposal.Rule)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := a.validateRouterManagedRuleTarget(filters.Node, protoRule); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 

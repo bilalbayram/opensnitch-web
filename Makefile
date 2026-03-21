@@ -1,4 +1,4 @@
-.PHONY: all build proto frontend clean run dev embed verify-embed install uninstall
+.PHONY: all build proto frontend clean run dev embed verify-embed install uninstall daemon-router-arm64
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -29,6 +29,9 @@ verify-embed: embed
 # Build Go binary (with embedded frontend)
 build: embed
 	CGO_ENABLED=1 go build -ldflags '$(LDFLAGS)' -o bin/opensnitch-web ./cmd/opensnitch-web
+
+daemon-router-arm64:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags '$(LDFLAGS)' -o bin/opensnitchd-router-linux-arm64 ./cmd/opensnitchd-router
 
 # Run the server (dev mode — serves from web/dist)
 run:

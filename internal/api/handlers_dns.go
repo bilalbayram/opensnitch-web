@@ -157,6 +157,14 @@ func (a *API) handleCreateDNSServerRules(w http.ResponseWriter, r *http.Request)
 				},
 			},
 		}
+		if err := a.validateRouterManagedRuleTarget(req.Node, protoRule); err != nil {
+			status := http.StatusInternalServerError
+			if ruleutil.IsRouterManagedRuleError(err) {
+				status = http.StatusConflict
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
 
 		dbRule, err := ruleutil.ProtoToDBRule(req.Node, now, protoRule)
 		if err != nil {
@@ -193,6 +201,14 @@ func (a *API) handleCreateDNSServerRules(w http.ResponseWriter, r *http.Request)
 			Operand: "dest.port",
 			Data:    "53",
 		},
+	}
+	if err := a.validateRouterManagedRuleTarget(req.Node, denyRule); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
 	}
 
 	dbDeny, err := ruleutil.ProtoToDBRule(req.Node, now, denyRule)
@@ -351,6 +367,14 @@ func (a *API) handleSetDNSPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	protoRules := dnspolicy.BuildRules(policy)
+	if err := a.validateRouterManagedRuleSet(req.Node, protoRules); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 
 	now := time.Now()
 	dbRules := make([]*db.DBRule, 0, len(protoRules))

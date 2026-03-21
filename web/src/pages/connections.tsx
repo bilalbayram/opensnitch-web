@@ -6,10 +6,12 @@ import { ResponsiveDataView } from '@/components/ui/responsive-data-view';
 import { QuickRulePopover } from '@/components/quick-rule-popover';
 import { RuleEditorSheet } from '@/components/rule-editor-sheet';
 import type { RuleForm } from '@/components/rule-editor-sheet';
+import { formatProcessLabel } from '@/lib/rule-helpers';
 
 interface NodeInfo {
   addr: string;
   hostname: string;
+  router_managed: boolean;
 }
 
 export default function ConnectionsPage() {
@@ -24,6 +26,7 @@ export default function ConnectionsPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPrefill, setEditorPrefill] = useState<Partial<RuleForm> | undefined>();
   const limit = 50;
+  const nodeByAddr = Object.fromEntries(nodes.map((node) => [node.addr, node]));
 
   useEffect(() => {
     api.getNodes().then(setNodes).catch(console.error);
@@ -158,11 +161,13 @@ export default function ConnectionsPage() {
             <td className="px-4 py-2 text-xs uppercase">{c.protocol}</td>
             <td className="px-4 py-2 text-xs">{c.src_ip}:{c.src_port}</td>
             <td className="px-4 py-2 text-xs">{c.dst_host || c.dst_ip}:{c.dst_port}</td>
-            <td className="px-4 py-2 font-mono text-xs max-w-48 truncate" title={c.process}>{c.process}</td>
+            <td className="px-4 py-2 font-mono text-xs max-w-48 truncate" title={formatProcessLabel(c.process)}>
+              {formatProcessLabel(c.process)}
+            </td>
             <td className="px-4 py-2 text-xs text-muted-foreground">{c.rule}</td>
             <td className="px-4 py-2">
               <QuickRulePopover
-                connection={c}
+                connection={{ ...c, router_managed: nodeByAddr[c.node]?.router_managed }}
                 onAdvanced={handleAdvanced}
               />
             </td>
@@ -183,14 +188,14 @@ export default function ConnectionsPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <QuickRulePopover
-                  connection={c}
+                  connection={{ ...c, router_managed: nodeByAddr[c.node]?.router_managed }}
                   onAdvanced={handleAdvanced}
                 />
                 <span className="text-[10px] text-muted-foreground">{c.time}</span>
               </div>
             </div>
             <div className="font-mono text-xs break-all text-foreground/90">
-              {truncateMiddle(c.process || '', 60)}
+              {truncateMiddle(formatProcessLabel(c.process || ''), 60)}
             </div>
             <div className="text-xs text-muted-foreground">
               → {c.dst_host || c.dst_ip}:{c.dst_port}
@@ -232,6 +237,7 @@ export default function ConnectionsPage() {
         open={editorOpen}
         onClose={() => { setEditorOpen(false); setEditorPrefill(undefined); }}
         initialValues={editorPrefill}
+        routerManaged={Boolean(editorPrefill?.node && nodeByAddr[editorPrefill.node]?.router_managed)}
         onSave={handleEditorSave}
         title="Create Rule from Connection"
       />
