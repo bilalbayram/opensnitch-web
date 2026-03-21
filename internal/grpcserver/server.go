@@ -1,6 +1,7 @@
 package grpcserver
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -29,6 +30,20 @@ func New(service *UIService) *Server {
 	s := grpc.NewServer(
 		grpc.KeepaliveParams(kasp),
 		grpc.KeepaliveEnforcementPolicy(kaep),
+		grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			resolvedCtx, err := service.resolveRouterNodeContext(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return handler(resolvedCtx, req)
+		}),
+		grpc.StreamInterceptor(func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			resolvedCtx, err := service.resolveRouterNodeContext(stream.Context())
+			if err != nil {
+				return err
+			}
+			return handler(srv, &wrappedServerStream{ServerStream: stream, ctx: resolvedCtx})
+		}),
 	)
 
 	pb.RegisterUIServer(s, service)

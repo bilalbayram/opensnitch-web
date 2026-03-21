@@ -262,8 +262,17 @@ func (a *API) handleCreateTemplateRule(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
+	candidate := buildTemplateRuleRecord(templateID, 0, req)
+	if err := a.validateTemplateRuleForManagedTargets(templateID, candidate); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 
-	templateRule, err := a.db.CreateTemplateRule(buildTemplateRuleRecord(templateID, 0, req))
+	templateRule, err := a.db.CreateTemplateRule(candidate)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -271,6 +280,9 @@ func (a *API) handleCreateTemplateRule(w http.ResponseWriter, r *http.Request) {
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileTemplate(templateID); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -321,6 +333,14 @@ func (a *API) handleUpdateTemplateRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templateRule := buildTemplateRuleRecord(templateID, ruleID, req)
+	if err := a.validateTemplateRuleForManagedTargets(templateID, templateRule); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 	if err := a.db.UpdateTemplateRule(templateRule); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -328,6 +348,9 @@ func (a *API) handleUpdateTemplateRule(w http.ResponseWriter, r *http.Request) {
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileTemplate(templateID); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -375,6 +398,9 @@ func (a *API) handleDeleteTemplateRule(w http.ResponseWriter, r *http.Request) {
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileTemplate(templateID); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -407,6 +433,14 @@ func (a *API) handleCreateTemplateAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if err := a.validateTemplateAttachmentForManagedTargets(templateID, req.TargetType, req.TargetRef); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 
 	attachment, err := a.db.CreateTemplateAttachment(&db.TemplateAttachment{
 		TemplateID: templateID,
@@ -421,6 +455,9 @@ func (a *API) handleCreateTemplateAttachment(w http.ResponseWriter, r *http.Requ
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileTemplate(templateID); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -467,6 +504,14 @@ func (a *API) handleUpdateTemplateAttachment(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if err := a.validateTemplateAttachmentForManagedTargets(templateID, req.TargetType, req.TargetRef); err != nil {
+		status := http.StatusInternalServerError
+		if ruleutil.IsRouterManagedRuleError(err) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]string{"error": err.Error()})
+		return
+	}
 
 	beforeNodes := []string{}
 	if a.templateSync != nil {
@@ -487,6 +532,9 @@ func (a *API) handleUpdateTemplateAttachment(w http.ResponseWriter, r *http.Requ
 	if a.templateSync != nil {
 		afterNodes, _ := a.templateSync.AffectedNodesForTemplates([]int64{templateID})
 		if err := a.templateSync.ReconcileNodes(append(beforeNodes, afterNodes...)); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -534,6 +582,9 @@ func (a *API) handleDeleteTemplateAttachment(w http.ResponseWriter, r *http.Requ
 
 	if a.templateSync != nil {
 		if err := a.templateSync.ReconcileNodes(affectedNodes); err != nil {
+			if writeRouterManagedSyncError(w, err) {
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}

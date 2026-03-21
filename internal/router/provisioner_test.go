@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,8 +26,8 @@ type fakeRunResult struct {
 func newFakeRemoteClient() *fakeRemoteClient {
 	return &fakeRemoteClient{
 		outputs: map[string]fakeRunResult{
-			"cat /etc/openwrt_release 2>/dev/null":                                                {output: "DISTRIB_ID='OpenWrt'\n"},
-			"{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING":                   {output: "INSTALLED\n"},
+			"cat /etc/openwrt_release 2>/dev/null": {output: "DISTRIB_ID='OpenWrt'\n"},
+			"{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING": {output: "INSTALLED\n"},
 			"mkdir -p /etc/conntrack-agent":                                                       {},
 			"chmod +x /etc/conntrack-agent/agent.sh /etc/init.d/conntrack-agent":                  {},
 			"/etc/init.d/conntrack-agent enable":                                                  {},
@@ -55,6 +56,11 @@ func (c *fakeRemoteClient) Run(cmd string) (string, error) {
 
 func (c *fakeRemoteClient) WriteFile(path, content string) error {
 	c.writes[path] = content
+	return nil
+}
+
+func (c *fakeRemoteClient) WriteBinary(path string, content []byte, mode os.FileMode) error {
+	c.writes[path] = fmt.Sprintf("binary:%d:%o", len(content), mode.Perm())
 	return nil
 }
 

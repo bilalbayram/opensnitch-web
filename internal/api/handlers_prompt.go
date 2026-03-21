@@ -21,42 +21,49 @@ func (a *API) handleGetPendingPrompts(w http.ResponseWriter, r *http.Request) {
 	pending := a.prompter.GetPending()
 
 	type promptResponse struct {
-		ID        string      `json:"id"`
-		NodeAddr  string      `json:"node_addr"`
-		CreatedAt string      `json:"created_at"`
-		Process   string      `json:"process"`
-		DstHost   string      `json:"dst_host"`
-		DstIP     string      `json:"dst_ip"`
-		DstPort   uint32      `json:"dst_port"`
-		Protocol  string      `json:"protocol"`
-		SrcIP     string      `json:"src_ip"`
-		SrcPort   uint32      `json:"src_port"`
-		UID       uint32      `json:"uid"`
-		PID       uint32      `json:"pid"`
-		Args      []string    `json:"args"`
-		Cwd       string      `json:"cwd"`
-		Checksums interface{} `json:"checksums"`
+		ID            string      `json:"id"`
+		NodeAddr      string      `json:"node_addr"`
+		CreatedAt     string      `json:"created_at"`
+		Process       string      `json:"process"`
+		DstHost       string      `json:"dst_host"`
+		DstIP         string      `json:"dst_ip"`
+		DstPort       uint32      `json:"dst_port"`
+		Protocol      string      `json:"protocol"`
+		SrcIP         string      `json:"src_ip"`
+		SrcPort       uint32      `json:"src_port"`
+		UID           uint32      `json:"uid"`
+		PID           uint32      `json:"pid"`
+		Args          []string    `json:"args"`
+		Cwd           string      `json:"cwd"`
+		Checksums     interface{} `json:"checksums"`
+		RouterManaged bool        `json:"router_managed"`
 	}
 
 	result := make([]promptResponse, 0, len(pending))
 	for _, p := range pending {
 		conn := p.Connection
+		routerManaged, err := a.isRouterManagedNode(p.NodeAddr)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
 		result = append(result, promptResponse{
-			ID:        p.ID,
-			NodeAddr:  p.NodeAddr,
-			CreatedAt: p.CreatedAt.Format("2006-01-02 15:04:05"),
-			Process:   conn.GetProcessPath(),
-			DstHost:   conn.GetDstHost(),
-			DstIP:     conn.GetDstIp(),
-			DstPort:   conn.GetDstPort(),
-			Protocol:  conn.GetProtocol(),
-			SrcIP:     conn.GetSrcIp(),
-			SrcPort:   conn.GetSrcPort(),
-			UID:       conn.GetUserId(),
-			PID:       conn.GetProcessId(),
-			Args:      conn.GetProcessArgs(),
-			Cwd:       conn.GetProcessCwd(),
-			Checksums: conn.GetProcessChecksums(),
+			ID:            p.ID,
+			NodeAddr:      p.NodeAddr,
+			CreatedAt:     p.CreatedAt.Format("2006-01-02 15:04:05"),
+			Process:       conn.GetProcessPath(),
+			DstHost:       conn.GetDstHost(),
+			DstIP:         conn.GetDstIp(),
+			DstPort:       conn.GetDstPort(),
+			Protocol:      conn.GetProtocol(),
+			SrcIP:         conn.GetSrcIp(),
+			SrcPort:       conn.GetSrcPort(),
+			UID:           conn.GetUserId(),
+			PID:           conn.GetProcessId(),
+			Args:          conn.GetProcessArgs(),
+			Cwd:           conn.GetProcessCwd(),
+			Checksums:     conn.GetProcessChecksums(),
+			RouterManaged: routerManaged,
 		})
 	}
 
@@ -65,6 +72,11 @@ func (a *API) handleGetPendingPrompts(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) handlePromptReply(w http.ResponseWriter, r *http.Request) {
 	promptID := chi.URLParam(r, "id")
+	pending := a.prompter.GetPendingPrompt(promptID)
+	if pending == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "prompt not found or expired"})
+		return
+	}
 
 	var req promptReplyRequest
 	if err := readJSON(r, &req); err != nil {
@@ -87,6 +99,11 @@ func (a *API) handlePromptReply(w http.ResponseWriter, r *http.Request) {
 			Operand: req.Operand,
 			Data:    req.Data,
 		},
+	}
+
+	if err := a.validateRouterManagedRuleTarget(pending.NodeAddr, rule); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
 	}
 
 	if err := a.prompter.Reply(promptID, rule); err != nil {
