@@ -7,6 +7,7 @@ import { ResponsiveDataView } from "@/components/ui/responsive-data-view";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { RuleEditorSheet, defaultForm, operandLabels } from "@/components/rule-editor-sheet";
 import type { RuleForm } from "@/components/rule-editor-sheet";
+import { formatProcessLabel, isDeviceSource } from "@/lib/rule-helpers";
 
 interface GeneratedRulePreview {
   fingerprint: string;
@@ -69,6 +70,13 @@ function flattenOperators(operator?: RuleOperator): RuleOperator[] {
 }
 
 function formatOperator(operator: RuleOperator) {
+  if (
+    operator.operand === "process.path" &&
+    operator.data &&
+    isDeviceSource(operator.data)
+  ) {
+    return formatProcessLabel(operator.data);
+  }
   const label =
     operandLabels[operator.operand || ""] || operator.operand || "Match";
   const value =
@@ -127,6 +135,12 @@ export default function RulesPage() {
     () => nodes.find((node) => node.addr === selectedNode),
     [nodes, selectedNode],
   );
+  const routerManagedScope = useMemo(() => {
+    if (selectedNode) {
+      return Boolean(selectedNodeInfo?.router_managed);
+    }
+    return nodes.some((node) => node.router_managed);
+  }, [nodes, selectedNode, selectedNodeInfo]);
 
   const fetchNodes = () => {
     api.getNodes().then(setNodes).catch(console.error);
@@ -372,6 +386,11 @@ export default function RulesPage() {
                 {modeLabels[selectedNodeInfo.mode] || selectedNodeInfo.mode}
               </span>
               <span>{selectedNodeInfo.hostname || selectedNodeInfo.addr}</span>
+              {selectedNodeInfo.router_managed && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
+                  Router-managed
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -619,6 +638,7 @@ export default function RulesPage() {
         onClose={() => setShowEditor(false)}
         initialValues={form}
         editing={editing}
+        routerManaged={routerManagedScope}
         onSave={handleSave}
       />
 

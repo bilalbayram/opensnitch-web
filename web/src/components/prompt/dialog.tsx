@@ -70,6 +70,7 @@ export function PromptOverlay() {
 
   const progressPercent = (countdown / 120) * 100;
   const urgent = countdown <= 30;
+  const routerManaged = Boolean(prompt.router_managed);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center">
@@ -133,11 +134,16 @@ export function PromptOverlay() {
               className="w-full bg-muted border border-border rounded-lg px-3 py-2.5 text-sm"
             >
               <option value="process.path">Process: {prompt.process}</option>
-              {prompt.dst_host && <option value="dest.host">Host: {prompt.dst_host}</option>}
+              {!routerManaged && prompt.dst_host && <option value="dest.host">Host: {prompt.dst_host}</option>}
               <option value="dest.ip">IP: {prompt.dst_ip}</option>
               <option value="dest.port">Port: {prompt.dst_port}</option>
               <option value="user.id">User: {prompt.uid}</option>
             </select>
+            {routerManaged && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Router-managed prompts only support process path, destination IP, destination port, and user ID operands.
+              </div>
+            )}
           </div>
 
           {/* Duration selector — larger touch targets on mobile */}

@@ -21,9 +21,10 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	HTTPAddr string `yaml:"http_addr"`
-	GRPCAddr string `yaml:"grpc_addr"`
-	GRPCUnix string `yaml:"grpc_unix"`
+	HTTPAddr       string `yaml:"http_addr"`
+	GRPCAddr       string `yaml:"grpc_addr"`
+	GRPCPublicAddr string `yaml:"grpc_public_addr"`
+	GRPCUnix       string `yaml:"grpc_unix"`
 }
 
 type DatabaseConfig struct {
@@ -51,9 +52,10 @@ type GeoIPConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			HTTPAddr: ":8080",
-			GRPCAddr: "0.0.0.0:50051",
-			GRPCUnix: "/tmp/osui.sock",
+			HTTPAddr:       ":8080",
+			GRPCAddr:       "0.0.0.0:50051",
+			GRPCPublicAddr: "",
+			GRPCUnix:       "/tmp/osui.sock",
 		},
 		Database: DatabaseConfig{
 			Path:      "./opensnitch-web.db",
