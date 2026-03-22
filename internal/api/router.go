@@ -170,6 +170,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		r.Post("/api/v1/routers/suggest-url", api.handleSuggestServerURL)
 		r.Post("/api/v1/routers/connect", api.handleConnectRouter)
 		r.Get("/api/v1/routers", api.handleGetRouters)
+		r.Delete("/api/v1/routers/{addr}", api.handleDeleteRouter)
 		r.Post("/api/v1/routers/{addr}/capabilities", api.handleRouterCapabilities)
 		r.Post("/api/v1/routers/{addr}/upgrade", api.handleUpgradeRouter)
 		r.Post("/api/v1/routers/{addr}/downgrade", api.handleDowngradeRouter)

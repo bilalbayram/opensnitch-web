@@ -275,6 +275,48 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) handleDeleteRouter(w http.ResponseWriter, r *http.Request) {
+	addr := routerAddrParam(r)
+
+	rt, err := a.db.GetRouterByAddr(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "router not found"})
+		return
+	}
+
+	nodeAddrs := []string{rt.Addr}
+	if strings.TrimSpace(rt.LinkedNodeAddr) != "" && rt.LinkedNodeAddr != rt.Addr {
+		nodeAddrs = append(nodeAddrs, rt.LinkedNodeAddr)
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		node, err := a.db.GetNode(nodeAddr)
+		if err != nil {
+			continue
+		}
+		if routerOnlineFromLastConn(node.LastConn) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "disconnect the router before deleting it"})
+			return
+		}
+	}
+
+	if err := a.db.DeleteRouter(rt.Addr); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		if _, err := a.db.GetNode(nodeAddr); err == nil {
+			if err := a.db.DeleteNode(nodeAddr); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (a *API) handleSuggestServerURL(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RouterIP string `json:"router_ip"`

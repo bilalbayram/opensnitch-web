@@ -382,6 +382,28 @@ export default function NodesPage() {
     }
   };
 
+  const handleDeleteRouter = async (router: RouterRecord) => {
+    const label = router.name || router.addr;
+    if (
+      !window.confirm(
+        `Delete offline router ${label} and its stored data? This removes the router locally without connecting over SSH.`,
+      )
+    ) {
+      return;
+    }
+
+    await withRouterBusy(router.addr, "deleting", async () => {
+      try {
+        await api.deleteRouter(router.addr);
+        showStatus(router.addr, "Router deleted");
+        fetchPageData(true);
+      } catch (e) {
+        console.error("Router delete failed:", e);
+        showStatus(router.addr, e instanceof Error ? e.message : "Delete failed");
+      }
+    });
+  };
+
   const autoDetectSubnet = (ip: string) => {
     const parts = ip.split(".");
     if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
@@ -1014,7 +1036,23 @@ export default function NodesPage() {
                     {busy === "disconnecting" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}
                     Disconnect
                   </button>
+                  {!online && (
+                    <button
+                      onClick={() => handleDeleteRouter(router)}
+                      disabled={!!busy}
+                      className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                      title="Delete offline router locally"
+                    >
+                      {busy === "deleting" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      Delete
+                    </button>
+                  )}
                 </div>
+                {!online && (
+                  <div className="text-xs text-muted-foreground">
+                    Delete removes the offline router entry locally when SSH disconnect is not possible.
+                  </div>
+                )}
               </div>
 
               {nodeControls && renderModeControls(runtimeNode)}
