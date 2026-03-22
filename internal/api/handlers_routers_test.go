@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,12 +18,16 @@ import (
 )
 
 type stubRouterProvisioner struct {
-	steps []routerpkg.ProvisionStep
-	err   error
+	provisionResult *routerpkg.ProvisionResult
+	provisionErr    error
+	daemonResult    *routerpkg.ProvisionResult
+	daemonErr       error
+	steps           []routerpkg.ProvisionStep
+	err             error
 }
 
 func (s *stubRouterProvisioner) Provision(ctx context.Context, req routerpkg.ConnectRequest) (*routerpkg.ProvisionResult, error) {
-	return nil, errors.New("not implemented")
+	return s.provisionResult, s.provisionErr
 }
 
 func (s *stubRouterProvisioner) Deprovision(ctx context.Context, addr string, sshPort int, sshUser, sshPass, sshKey string) ([]routerpkg.ProvisionStep, error) {
@@ -34,6 +39,9 @@ func (s *stubRouterProvisioner) CheckCapabilities(ctx context.Context, addr stri
 }
 
 func (s *stubRouterProvisioner) ProvisionDaemon(ctx context.Context, req routerpkg.DaemonRequest) (*routerpkg.ProvisionResult, error) {
+	if s.daemonResult != nil || s.daemonErr != nil {
+		return s.daemonResult, s.daemonErr
+	}
 	return &routerpkg.ProvisionResult{Steps: s.steps}, s.err
 }
 
@@ -177,6 +185,128 @@ func TestHandleDisconnectRouterFailurePreservesState(t *testing.T) {
 	}
 	if node.Status != "online" {
 		t.Fatalf("expected node status online, got %q", node.Status)
+	}
+}
+
+func TestHandleConnectRouterRejectsInvalidMode(t *testing.T) {
+	env := newAPITestEnv(t)
+
+	rec := performJSONRequest(t, env.api.handleConnectRouter, http.MethodPost, "/api/v1/routers/connect", map[string]string{
+		"addr":     "192.168.1.1",
+		"ssh_pass": "secret",
+		"mode":     "invalid",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleConnectRouterManageFailureFallsBackToMonitor(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.api.routerProv = &stubRouterProvisioner{
+		provisionResult: &routerpkg.ProvisionResult{
+			Router: &db.Router{
+				Name:       "router-a",
+				Addr:       "192.168.1.1",
+				SSHPort:    22,
+				SSHUser:    "root",
+				DaemonMode: db.RouterDaemonModeConntrackAgent,
+			},
+			Steps: []routerpkg.ProvisionStep{{Step: "connect", Status: "done", Message: "Connected"}},
+		},
+		daemonResult: &routerpkg.ProvisionResult{
+			Router: &db.Router{
+				Name:       "router-a",
+				Addr:       "192.168.1.1",
+				SSHPort:    22,
+				SSHUser:    "root",
+				DaemonMode: db.RouterDaemonModeConntrackAgent,
+			},
+			Capabilities: &routerpkg.RouterCapabilities{
+				RAMMB:            64,
+				RAMSupported:     false,
+				IneligibleReason: "router-daemon v1 requires at least 128MB RAM",
+			},
+			Steps: []routerpkg.ProvisionStep{{Step: "capabilities", Status: "error", Message: "router-daemon v1 requires at least 128MB RAM"}},
+		},
+		daemonErr: errors.New("router-daemon v1 requires at least 128MB RAM"),
+	}
+
+	rec := performJSONRequest(t, env.api.handleConnectRouter, http.MethodPost, "/api/v1/routers/connect", map[string]string{
+		"addr":     "192.168.1.1",
+		"ssh_pass": "secret",
+		"mode":     "manage",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	response := decodeJSON[struct {
+		Warning      string                        `json:"warning"`
+		Capabilities *routerpkg.RouterCapabilities `json:"capabilities"`
+		Steps        []routerpkg.ProvisionStep     `json:"steps"`
+		Router       struct {
+			DaemonMode string `json:"daemon_mode"`
+		} `json:"router"`
+	}](t, rec)
+	if response.Router.DaemonMode != db.RouterDaemonModeConntrackAgent {
+		t.Fatalf("expected router to remain in monitor mode, got %+v", response.Router)
+	}
+	if response.Warning == "" {
+		t.Fatalf("expected warning in response")
+	}
+	if len(response.Steps) != 2 {
+		t.Fatalf("expected combined steps, got %+v", response.Steps)
+	}
+	if response.Capabilities == nil || response.Capabilities.RAMSupported {
+		t.Fatalf("expected capabilities to be returned on manage fallback, got %+v", response.Capabilities)
+	}
+
+	node, err := env.database.GetNode("192.168.1.1")
+	if err != nil {
+		t.Fatalf("expected monitor node record to be created, got %v", err)
+	}
+	if node.DaemonVersion != "conntrack-agent" {
+		t.Fatalf("expected legacy node version to remain conntrack-agent, got %+v", node)
+	}
+}
+
+func TestHandleConnectRouterManageSuccessSkipsLegacyNodeUpsert(t *testing.T) {
+	env := newAPITestEnv(t)
+	env.api.routerProv = &stubRouterProvisioner{
+		provisionResult: &routerpkg.ProvisionResult{
+			Router: &db.Router{
+				Name:       "router-a",
+				Addr:       "192.168.1.1",
+				SSHPort:    22,
+				SSHUser:    "root",
+				DaemonMode: db.RouterDaemonModeConntrackAgent,
+			},
+			Steps: []routerpkg.ProvisionStep{{Step: "connect", Status: "done", Message: "Connected"}},
+		},
+		daemonResult: &routerpkg.ProvisionResult{
+			Router: &db.Router{
+				Name:       "router-a",
+				Addr:       "192.168.1.1",
+				SSHPort:    22,
+				SSHUser:    "root",
+				DaemonMode: db.RouterDaemonModeRouterDaemon,
+			},
+			Steps: []routerpkg.ProvisionStep{{Step: "verify", Status: "done", Message: "router-daemon subscribed"}},
+		},
+	}
+
+	rec := performJSONRequest(t, env.api.handleConnectRouter, http.MethodPost, "/api/v1/routers/connect", map[string]string{
+		"addr":     "192.168.1.1",
+		"ssh_pass": "secret",
+		"mode":     "manage",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := env.database.GetNode("192.168.1.1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected no legacy node upsert after manage success, got %v", err)
 	}
 }
 

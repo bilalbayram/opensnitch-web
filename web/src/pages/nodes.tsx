@@ -49,6 +49,45 @@ const modeOptions = [
   },
 ];
 
+type RouterConnectMode = "monitor" | "manage";
+
+interface RouterFormState {
+  addr: string;
+  ssh_port: number;
+  ssh_user: string;
+  ssh_pass: string;
+  ssh_key: string;
+  name: string;
+  lan_subnet: string;
+  server_url: string;
+  mode: RouterConnectMode;
+}
+
+const defaultRouterForm: RouterFormState = {
+  addr: "",
+  ssh_port: 22,
+  ssh_user: "root",
+  ssh_pass: "",
+  ssh_key: "",
+  name: "",
+  lan_subnet: "",
+  server_url: "",
+  mode: "monitor",
+};
+
+const routerConnectModeOptions = [
+  {
+    value: "monitor" as const,
+    label: "Monitor",
+    description: "Best compatibility. Tracks forwarded traffic with the legacy router agent.",
+  },
+  {
+    value: "manage" as const,
+    label: "Manage",
+    description: "Deploys router-daemon for router-local prompts and runtime controls when supported.",
+  },
+];
+
 interface TrustEntry {
   id: number;
   node: string;
@@ -73,16 +112,7 @@ export default function NodesPage() {
 
   // Router connection state
   const [showConnectRouter, setShowConnectRouter] = useState(false);
-  const [routerForm, setRouterForm] = useState({
-    addr: "",
-    ssh_port: 22,
-    ssh_user: "root",
-    ssh_pass: "",
-    ssh_key: "",
-    name: "",
-    lan_subnet: "",
-    server_url: "",
-  });
+  const [routerForm, setRouterForm] = useState({ ...defaultRouterForm });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [serverUrlSource, setServerUrlSource] = useState("");
   const [connecting, setConnecting] = useState(false);
@@ -90,6 +120,7 @@ export default function NodesPage() {
     null,
   );
   const [connectError, setConnectError] = useState("");
+  const [connectWarning, setConnectWarning] = useState("");
 
   // Network scan state
   const [scanning, setScanning] = useState(false);
@@ -269,27 +300,24 @@ export default function NodesPage() {
   const handleConnectRouter = async () => {
     setConnecting(true);
     setConnectError("");
+    setConnectWarning("");
     setConnectSteps(null);
     try {
       const res = await api.connectRouter(routerForm);
       setConnectSteps(res.steps);
+      fetchPageData(true);
       setConnecting(false);
+      if (res.warning) {
+        setConnectWarning(res.warning);
+        return;
+      }
       setTimeout(() => {
         setShowConnectRouter(false);
         setConnectSteps(null);
-        setRouterForm({
-          addr: "",
-          ssh_port: 22,
-          ssh_user: "root",
-          ssh_pass: "",
-          ssh_key: "",
-          name: "",
-          lan_subnet: "",
-          server_url: "",
-        });
+        setRouterForm({ ...defaultRouterForm });
         setShowAdvanced(false);
         setServerUrlSource("");
-        fetchPageData(true);
+        setConnectWarning("");
       }, 2000);
     } catch (e: unknown) {
       // Try to parse steps from the error response body
@@ -301,6 +329,7 @@ export default function NodesPage() {
       if (errorSteps) {
         setConnectSteps(errorSteps);
       }
+      setConnectWarning("");
       setConnectError(err.message || "Connection failed");
       setConnecting(false);
     }
@@ -827,6 +856,10 @@ export default function NodesPage() {
     );
   };
 
+  const canConnectRouter = Boolean(
+    routerForm.addr.trim() && (routerForm.ssh_pass || routerForm.ssh_key.trim()),
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1103,6 +1136,7 @@ export default function NodesPage() {
           if (!connecting) {
             setShowConnectRouter(false);
             setConnectError("");
+            setConnectWarning("");
             setConnectSteps(null);
             setScanResults(null);
           }
@@ -1112,7 +1146,7 @@ export default function NodesPage() {
           !connectSteps && (
             <button
               onClick={handleConnectRouter}
-              disabled={connecting || !routerForm.addr || !routerForm.ssh_pass}
+              disabled={connecting || !canConnectRouter}
               className="w-full flex items-center justify-center gap-2 text-sm px-4 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {connecting ? (
@@ -1156,6 +1190,16 @@ export default function NodesPage() {
               {connectSteps.every((s) => s.status === "done" || s.status === "warning") && (
                 <div className="mt-4 text-center text-sm text-success">
                   Router connected successfully!
+                </div>
+              )}
+              {connectWarning && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                  {connectWarning}
+                </div>
+              )}
+              {connectError && (
+                <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {connectError}
                 </div>
               )}
             </div>
@@ -1313,6 +1357,40 @@ export default function NodesPage() {
               </div>
 
               <div>
+                <label className="text-xs text-muted-foreground block mb-2">Router Mode</label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {routerConnectModeOptions.map((option) => {
+                    const selected = routerForm.mode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setRouterForm((prev) => ({ ...prev, mode: option.value }))
+                        }
+                        className={`rounded-xl border p-3 text-left transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-muted/30 hover:bg-muted/50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium">{option.label}</div>
+                          {selected && <Check className="h-4 w-4 text-primary" />}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {option.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Manage may fail on smaller routers. It needs enough RAM, storage, and a supported OpenWrt target. If that happens, the router stays connected in monitor mode.
+                </p>
+              </div>
+
+              <div>
                 <label className="text-xs text-muted-foreground block mb-1">LAN Subnet <span className="text-muted-foreground/60">(auto-detected)</span></label>
                 <input
                   type="text"
@@ -1386,6 +1464,11 @@ export default function NodesPage() {
               {connectError && (
                 <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
                   {connectError}
+                </div>
+              )}
+              {connectWarning && (
+                <div className="text-sm text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  {connectWarning}
                 </div>
               )}
             </>
