@@ -336,3 +336,70 @@ func TestHandleDisconnectRouterSuccessRemovesState(t *testing.T) {
 		t.Fatalf("expected node status offline, got %q", node.Status)
 	}
 }
+
+func TestHandleDeleteRouterRemovesOfflineRouterAndNode(t *testing.T) {
+	env := newAPITestEnv(t)
+	seedRouterRecord(t, env, "router-a", time.Now().Add(-2*time.Minute))
+
+	rec := performJSONRequestWithAddr(t, env.api.handleDeleteRouter, http.MethodDelete, "/api/v1/routers/router-a", "router-a", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := env.database.GetRouterByAddr("router-a"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected router removed, got %v", err)
+	}
+	if _, err := env.database.GetNode("router-a"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected router node removed, got %v", err)
+	}
+}
+
+func TestHandleDeleteRouterRejectsOnlineRouter(t *testing.T) {
+	env := newAPITestEnv(t)
+	seedRouterRecord(t, env, "router-a", time.Now().Add(-30*time.Second))
+
+	rec := performJSONRequestWithAddr(t, env.api.handleDeleteRouter, http.MethodDelete, "/api/v1/routers/router-a", "router-a", nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleDeleteRouterRemovesManagedRuntimeNode(t *testing.T) {
+	env := newAPITestEnv(t)
+
+	if err := env.database.InsertRouter(&db.Router{
+		Name:           "router-a",
+		Addr:           "192.168.1.1",
+		SSHPort:        22,
+		SSHUser:        "root",
+		APIKey:         "api-key",
+		LANSubnet:      "192.168.1.0/24",
+		DaemonMode:     db.RouterDaemonModeRouterDaemon,
+		LinkedNodeAddr: "managed-node",
+		Status:         "active",
+	}); err != nil {
+		t.Fatalf("seed router: %v", err)
+	}
+
+	if err := env.database.UpsertNode(&db.Node{
+		Addr:          "managed-node",
+		Hostname:      "managed-node",
+		DaemonVersion: "opensnitchd-router",
+		Status:        "offline",
+		LastConn:      time.Now().Add(-2 * time.Minute).Format("2006-01-02 15:04:05"),
+	}); err != nil {
+		t.Fatalf("seed managed node: %v", err)
+	}
+
+	rec := performJSONRequestWithAddr(t, env.api.handleDeleteRouter, http.MethodDelete, "/api/v1/routers/192.168.1.1", "192.168.1.1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if _, err := env.database.GetRouterByAddr("192.168.1.1"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected router removed, got %v", err)
+	}
+	if _, err := env.database.GetNode("managed-node"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected managed node removed, got %v", err)
+	}
+}

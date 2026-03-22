@@ -727,6 +727,10 @@ export const api = {
       body: JSON.stringify(params),
     }),
   getRouters: () => request<RouterRecord[]>("/routers"),
+  deleteRouter: (addr: string) =>
+    request<{ status: string }>(`/routers/${encodeURIComponent(addr)}`, {
+      method: "DELETE",
+    }),
   disconnectRouter: (addr: string, sshPass: string) =>
     request<{ status: string; steps: ProvisionStep[] }>(
       `/routers/${encodeURIComponent(addr)}/disconnect`,
