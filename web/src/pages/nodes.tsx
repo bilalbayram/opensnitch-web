@@ -137,6 +137,7 @@ export default function NodesPage() {
     Record<string, ProvisionStep[] | null>
   >({});
   const [routerBusy, setRouterBusy] = useState<Record<string, string>>({});
+  const [deletingNodes, setDeletingNodes] = useState<Record<string, boolean>>({});
 
   const fetchPageData = (force?: boolean) => {
     Promise.all([api.getNodes(), api.getRouters()])
@@ -294,6 +295,29 @@ export default function NodesPage() {
     } finally {
       pendingRef.current--;
       fetchPageData(true);
+    }
+  };
+
+  const handleDeleteNode = async (node: NodeRecord) => {
+    const label = node.hostname || node.addr;
+    if (!window.confirm(`Delete ${label} and its stored data? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingNodes((prev) => ({ ...prev, [node.addr]: true }));
+    try {
+      await api.deleteNode(node.addr);
+      showStatus(node.addr, "Node deleted");
+      fetchPageData(true);
+    } catch (e) {
+      console.error("Node delete failed:", e);
+      showStatus(node.addr, e instanceof Error ? e.message : "Node delete failed");
+    } finally {
+      setDeletingNodes((prev) => {
+        const next = { ...prev };
+        delete next[node.addr];
+        return next;
+      });
     }
   };
 
@@ -1037,11 +1061,16 @@ export default function NodesPage() {
           );
         })}
 
-        {genericNodes.map((node) => (
-          <div
-            key={node.addr}
-            className="bg-card border border-border rounded-xl p-4 md:p-5"
-          >
+        {genericNodes.map((node) => {
+          const deleting = Boolean(deletingNodes[node.addr]);
+          const canDelete =
+            !node.online && node.source_type !== "router" && !node.router_managed;
+
+          return (
+            <div
+              key={node.addr}
+              className="bg-card border border-border rounded-xl p-4 md:p-5"
+            >
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${node.online ? "bg-success/10" : "bg-muted"}`}>
@@ -1055,6 +1084,21 @@ export default function NodesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                {canDelete && (
+                  <button
+                    onClick={() => handleDeleteNode(node)}
+                    disabled={deleting}
+                    className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive hover:bg-destructive/20 disabled:opacity-50"
+                    title="Delete node and its stored data"
+                  >
+                    {deleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    Delete
+                  </button>
+                )}
                 <span
                   className={`text-xs px-2 py-1 rounded-full ${
                     node.online ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
@@ -1119,7 +1163,8 @@ export default function NodesPage() {
 
             {renderTrustSection(node, "Trust List")}
           </div>
-        ))}
+          );
+        })}
 
         {genericNodes.length === 0 && routerRuntimeNodes.length === 0 && (
           <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">

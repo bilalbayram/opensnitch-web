@@ -3,13 +3,16 @@ package router
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bilalbayram/opensnitch-web/internal/config"
@@ -27,6 +30,19 @@ type remoteClient interface {
 
 type sshRemoteClient struct {
 	client *ssh.Client
+}
+
+type sshDialError struct {
+	msg string
+	err error
+}
+
+func (e *sshDialError) Error() string {
+	return e.msg
+}
+
+func (e *sshDialError) Unwrap() error {
+	return e.err
 }
 
 func (c *sshRemoteClient) Close() error {
@@ -536,11 +552,15 @@ func (p *Provisioner) DeprovisionDaemon(ctx context.Context, addr string, sshPor
 // --- helpers ---
 
 func sshDial(addr string, port int, user, pass, key string) (remoteClient, error) {
+	target := net.JoinHostPort(addr, strconv.Itoa(port))
 	var authMethods []ssh.AuthMethod
 	if key != "" {
 		signer, err := ssh.ParsePrivateKey([]byte(key))
 		if err != nil {
-			return nil, fmt.Errorf("parse SSH key: %w", err)
+			return nil, &sshDialError{
+				msg: "SSH private key is invalid or unsupported",
+				err: fmt.Errorf("parse SSH key: %w", err),
+			}
 		}
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
@@ -560,13 +580,73 @@ func sshDial(addr string, port int, user, pass, key string) (remoteClient, error
 		User:            user,
 		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
 	}
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", addr, port), config)
+
+	const timeout = 10 * time.Second
+	conn, err := net.DialTimeout("tcp", target, timeout)
 	if err != nil {
-		return nil, err
+		return nil, wrapSSHDialError(addr, port, user, err)
 	}
-	return &sshRemoteClient{client: client}, nil
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("set SSH deadline: %w", err)
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, target, config)
+	if err != nil {
+		_ = conn.Close()
+		return nil, wrapSSHDialError(addr, port, user, err)
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		_ = sshConn.Close()
+		return nil, fmt.Errorf("clear SSH deadline: %w", err)
+	}
+
+	return &sshRemoteClient{client: ssh.NewClient(sshConn, chans, reqs)}, nil
+}
+
+func wrapSSHDialError(addr string, port int, user string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &sshDialError{
+		msg: explainSSHDialError(addr, port, user, err),
+		err: err,
+	}
+}
+
+func explainSSHDialError(addr string, port int, user string, err error) string {
+	target := net.JoinHostPort(addr, strconv.Itoa(port))
+	message := strings.TrimSpace(err.Error())
+	lower := strings.ToLower(message)
+
+	switch {
+	case isSSHTimeoutOrUnreachable(err, lower):
+		return fmt.Sprintf("router is offline or unreachable at %s", target)
+	case errors.Is(err, syscall.ECONNREFUSED) || strings.Contains(lower, "connection refused"):
+		return fmt.Sprintf("router is reachable at %s, but SSH is not accepting connections on that port", target)
+	case strings.Contains(lower, "unable to authenticate"):
+		return fmt.Sprintf("SSH authentication failed for %s@%s. Verify the SSH username and password or key", user, target)
+	case strings.Contains(lower, "connection reset by peer"), strings.Contains(lower, "broken pipe"), strings.Contains(lower, "unexpected packet"), strings.Contains(lower, "eof"):
+		return fmt.Sprintf("router responded at %s, but the SSH handshake did not complete", target)
+	default:
+		return fmt.Sprintf("SSH connection to %s failed: %s", target, message)
+	}
+}
+
+func isSSHTimeoutOrUnreachable(err error, lower string) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	return errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) ||
+		strings.Contains(lower, "i/o timeout") ||
+		strings.Contains(lower, "no route to host") ||
+		strings.Contains(lower, "host is down") ||
+		strings.Contains(lower, "network is unreachable")
 }
 
 func runSSHCommand(client *ssh.Client, cmd string) (string, error) {

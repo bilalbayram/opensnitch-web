@@ -1,5 +1,7 @@
 package db
 
+import "fmt"
+
 type Node struct {
 	Addr          string `json:"addr"`
 	Hostname      string `json:"hostname"`
@@ -138,4 +140,59 @@ func (d *Database) GetNodeMode(addr string) (string, error) {
 		return "ask", nil
 	}
 	return mode, nil
+}
+
+func (d *Database) DeleteNode(addr string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{query: "DELETE FROM template_attachments WHERE target_type = 'node' AND target_ref = ?", args: []any{addr}},
+		{query: "DELETE FROM node_tags WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM node_template_sync WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM process_trust WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM rules WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM alerts WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM seen_flows WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM dns_domains WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM connections WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM hosts WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM procs WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM addrs WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM ports WHERE node = ?", args: []any{addr}},
+		{query: "DELETE FROM users WHERE node = ?", args: []any{addr}},
+	}
+
+	for _, stmt := range statements {
+		if _, err := tx.Exec(stmt.query, stmt.args...); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+
+	result, err := tx.Exec("DELETE FROM nodes WHERE addr = ?", addr)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if rowsAffected == 0 {
+		_ = tx.Rollback()
+		return fmt.Errorf("node %s not found", addr)
+	}
+
+	return tx.Commit()
 }

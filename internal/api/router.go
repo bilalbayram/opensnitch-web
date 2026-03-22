@@ -90,6 +90,7 @@ func NewRouter(cfg *config.Config, database *db.Database, nodes *nodemanager.Man
 		// Nodes
 		r.Get("/api/v1/nodes", api.handleGetNodes)
 		r.Get("/api/v1/nodes/{addr}", api.handleGetNode)
+		r.Delete("/api/v1/nodes/{addr}", api.handleDeleteNode)
 		r.Put("/api/v1/nodes/{addr}/config", api.handleUpdateNodeConfig)
 		r.Put("/api/v1/nodes/{addr}/tags", api.handleReplaceNodeTags)
 		r.Post("/api/v1/nodes/{addr}/interception/enable", api.handleNodeAction(true, false))

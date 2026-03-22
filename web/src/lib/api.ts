@@ -397,6 +397,10 @@ export const api = {
   getNodes: () => request<NodeRecord[]>("/nodes"),
   getNode: (addr: string) =>
     request<NodeRecord>(`/nodes/${encodeURIComponent(addr)}`),
+  deleteNode: (addr: string) =>
+    request<{ status: string }>(`/nodes/${encodeURIComponent(addr)}`, {
+      method: "DELETE",
+    }),
   updateNodeConfig: (addr: string, config: object) =>
     request(`/nodes/${encodeURIComponent(addr)}/config`, {
       method: "PUT",

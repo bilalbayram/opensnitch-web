@@ -276,6 +276,41 @@ func (a *API) handleSetNodeMode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (a *API) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
+	addr := chi.URLParam(r, "addr")
+
+	node, err := a.db.GetNode(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "node not found"})
+		return
+	}
+
+	if node.SourceType == "router" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "router nodes must be removed from the router controls"})
+		return
+	}
+
+	if linkedRouter, err := a.db.GetRouterByLinkedNodeAddr(addr); err == nil && linkedRouter != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "router-managed nodes must be removed from the router controls"})
+		return
+	} else if err != nil && err != sql.ErrNoRows {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if a.nodes.GetNode(addr) != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "disconnect the node before deleting it"})
+		return
+	}
+
+	if err := a.db.DeleteNode(addr); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (a *API) handleNodeAction(enable bool, isFirewall bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		addr := chi.URLParam(r, "addr")
