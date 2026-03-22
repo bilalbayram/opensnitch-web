@@ -10,12 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/bilalbayram/opensnitch-web/internal/db"
 	"golang.org/x/crypto/ssh"
 )
+
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "i/o timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return true }
 
 type fakeRemoteClient struct {
 	outputs map[string]fakeRunResult
@@ -339,6 +346,36 @@ func TestSSHDialSupportsKeyboardInteractivePasswordAuth(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for keyboard-interactive handshake")
+	}
+}
+
+func TestExplainSSHDialErrorPasswordOnlyAuth(t *testing.T) {
+	err := errors.New("ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password], no supported methods remain")
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if !strings.Contains(message, "SSH authentication failed for root@192.168.1.1:22") {
+		t.Fatalf("expected auth failure explanation, got %q", message)
+	}
+}
+
+func TestExplainSSHDialErrorOfflineTimeout(t *testing.T) {
+	err := &net.OpError{Op: "dial", Net: "tcp", Err: timeoutNetError{}}
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if message != "router is offline or unreachable at 192.168.1.1:22" {
+		t.Fatalf("unexpected message: %q", message)
+	}
+}
+
+func TestExplainSSHDialErrorConnectionRefused(t *testing.T) {
+	err := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if message != "router is reachable at 192.168.1.1:22, but SSH is not accepting connections on that port" {
+		t.Fatalf("unexpected message: %q", message)
 	}
 }
 
