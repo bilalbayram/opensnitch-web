@@ -63,6 +63,7 @@ type ConnectRequest struct {
 	Name      string `json:"name"`
 	LANSubnet string `json:"lan_subnet"`
 	ServerURL string `json:"server_url,omitempty"`
+	Mode      string `json:"mode,omitempty"`
 }
 
 type ProvisionResult struct {
@@ -71,6 +72,7 @@ type ProvisionResult struct {
 	Steps           []ProvisionStep     `json:"steps"`
 	ServerURL       string              `json:"server_url"`
 	ServerURLSource string              `json:"server_url_source"`
+	Warning         string              `json:"warning,omitempty"`
 }
 
 type DaemonRequest struct {
@@ -97,6 +99,9 @@ const (
 	routerDaemonConfigDir        = "/etc/opensnitchd-router"
 	routerDaemonConfigPath       = "/etc/opensnitchd-router/config.json"
 	routerDaemonInitdPath        = "/etc/init.d/opensnitchd-router"
+
+	ConnectModeMonitor = "monitor"
+	ConnectModeManage  = "manage"
 )
 
 func NewProvisioner(database *db.Database) *Provisioner {
@@ -105,6 +110,17 @@ func NewProvisioner(database *db.Database) *Provisioner {
 		dial:     sshDial,
 		sleep:    time.Sleep,
 		readFile: os.ReadFile,
+	}
+}
+
+func NormalizeConnectMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", ConnectModeMonitor:
+		return ConnectModeMonitor
+	case ConnectModeManage:
+		return ConnectModeManage
+	default:
+		return ""
 	}
 }
 
@@ -530,6 +546,15 @@ func sshDial(addr string, port int, user, pass, key string) (remoteClient, error
 	}
 	if pass != "" {
 		authMethods = append(authMethods, ssh.Password(pass))
+		authMethods = append(authMethods, ssh.KeyboardInteractive(
+			func(_ string, _ string, questions []string, _ []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range questions {
+					answers[i] = pass
+				}
+				return answers, nil
+			},
+		))
 	}
 	config := &ssh.ClientConfig{
 		User:            user,

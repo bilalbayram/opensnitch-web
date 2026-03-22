@@ -57,6 +57,13 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 		req.Name = req.Addr
 	}
 
+	connectMode := router.NormalizeConnectMode(req.Mode)
+	if connectMode == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be monitor or manage"})
+		return
+	}
+	req.Mode = connectMode
+
 	// Resolve server URL: user override > LAN auto-detect > Host header fallback
 	var serverURLSource string
 	if req.ServerURL != "" {
@@ -94,15 +101,41 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 	result.ServerURL = req.ServerURL
 	result.ServerURLSource = serverURLSource
 
-	// Register as a node (UpsertRouterNode preserves existing cons counter)
-	a.db.UpsertRouterNode(result.Router.Addr, result.Router.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
+	if connectMode == router.ConnectModeManage {
+		daemonResult, daemonErr := a.routerProv.ProvisionDaemon(r.Context(), router.DaemonRequest{
+			Addr:     req.Addr,
+			SSHPort:  req.SSHPort,
+			SSHUser:  req.SSHUser,
+			SSHPass:  req.SSHPass,
+			SSHKey:   req.SSHKey,
+			NodeName: req.Name,
+		})
+		if daemonResult != nil {
+			result.Steps = append(result.Steps, daemonResult.Steps...)
+			if daemonResult.Router != nil {
+				result.Router = daemonResult.Router
+			}
+			if daemonResult.Capabilities != nil {
+				result.Capabilities = daemonResult.Capabilities
+			}
+		}
+		if daemonErr != nil {
+			result.Warning = fmt.Sprintf("Router connected in monitor mode. Manage setup failed: %v", daemonErr)
+		}
+	}
 
-	a.hub.BroadcastEvent(ws.EventNodeConnected, map[string]any{
-		"addr":        result.Router.Addr,
-		"hostname":    result.Router.Name,
-		"version":     "conntrack-agent",
-		"source_type": "router",
-	})
+	legacyConnected := result.Router != nil && result.Router.DaemonMode != db.RouterDaemonModeRouterDaemon
+	if legacyConnected {
+		// Register as a node (UpsertRouterNode preserves existing cons counter)
+		a.db.UpsertRouterNode(result.Router.Addr, result.Router.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
+
+		a.hub.BroadcastEvent(ws.EventNodeConnected, map[string]any{
+			"addr":        result.Router.Addr,
+			"hostname":    result.Router.Name,
+			"version":     "conntrack-agent",
+			"source_type": "router",
+		})
+	}
 
 	writeJSON(w, http.StatusOK, result)
 }

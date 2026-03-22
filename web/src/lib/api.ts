@@ -56,6 +56,7 @@ export interface ConnectRouterRequest {
   name?: string;
   lan_subnet?: string;
   server_url?: string;
+  mode?: "monitor" | "manage";
 }
 
 export interface ProvisionStep {
@@ -86,6 +87,7 @@ export interface ConnectRouterResponse {
   steps: ProvisionStep[];
   server_url?: string;
   server_url_source?: string;
+  warning?: string;
 }
 
 export interface RouterCapabilitiesResponse {
