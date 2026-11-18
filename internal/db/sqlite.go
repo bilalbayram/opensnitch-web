@@ -43,7 +43,6 @@ func (d *Database) Close() error {
 	return d.db.Close()
 }
 
-
 func (d *Database) migrate() error {
 	// Legacy-safe pre-migrations for older DBs.
 	// "duplicate column name" errors are expected and ignored.
@@ -57,6 +56,8 @@ func (d *Database) migrate() error {
 		"ALTER TABLE seen_flows ADD COLUMN source_rule_name TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE seen_flows ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE nodes ADD COLUMN source_type TEXT NOT NULL DEFAULT 'opensnitch'",
+		"ALTER TABLE routers ADD COLUMN daemon_mode TEXT NOT NULL DEFAULT 'conntrack-agent'",
+		"ALTER TABLE routers ADD COLUMN linked_node_addr TEXT NOT NULL DEFAULT ''",
 	}
 	for _, stmt := range legacyAlters {
 		if _, err := d.db.Exec(stmt); err != nil {
@@ -344,10 +345,13 @@ func (d *Database) migrate() error {
 		ssh_user TEXT NOT NULL DEFAULT 'root',
 		api_key TEXT NOT NULL UNIQUE,
 		lan_subnet TEXT NOT NULL DEFAULT '',
+		daemon_mode TEXT NOT NULL DEFAULT 'conntrack-agent',
+		linked_node_addr TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'pending',
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	);
+	CREATE INDEX IF NOT EXISTS idx_routers_linked_node_addr ON routers(linked_node_addr);
 	`
 
 	_, err := d.db.Exec(schema)

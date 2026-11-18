@@ -13,9 +13,22 @@ export interface NodeRecord {
   online: boolean;
   mode: string;
   source_type: string;
+  router_managed: boolean;
+  linked_router_addr: string;
   tags: string[];
   template_sync_pending: boolean;
   template_sync_error: string;
+}
+
+export interface RouterLinkedNodeSummary {
+  addr: string;
+  online: boolean;
+  mode: string;
+  daemon_version: string;
+  daemon_rules: number;
+  cons: number;
+  cons_dropped: number;
+  last_connection: string;
 }
 
 export interface RouterRecord {
@@ -25,8 +38,11 @@ export interface RouterRecord {
   ssh_port: number;
   ssh_user: string;
   lan_subnet: string;
+  daemon_mode: string;
+  linked_node_addr: string;
   status: string;
   online: boolean;
+  linked_node: RouterLinkedNodeSummary | null;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +56,7 @@ export interface ConnectRouterRequest {
   name?: string;
   lan_subnet?: string;
   server_url?: string;
+  mode?: "monitor" | "manage";
 }
 
 export interface ProvisionStep {
@@ -48,11 +65,49 @@ export interface ProvisionStep {
   message: string;
 }
 
+export interface RouterCapabilities {
+  openwrt: boolean;
+  arch: string;
+  kernel_version: string;
+  kernel_supported: boolean;
+  ram_mb: number;
+  ram_supported: boolean;
+  overlay_free_mb: number;
+  overlay_supported: boolean;
+  has_nft: boolean;
+  has_conntrack: boolean;
+  has_opkg: boolean;
+  eligible: boolean;
+  ineligible_reason: string;
+}
+
 export interface ConnectRouterResponse {
   router: RouterRecord;
+  capabilities?: RouterCapabilities;
   steps: ProvisionStep[];
   server_url?: string;
   server_url_source?: string;
+  warning?: string;
+}
+
+export interface RouterCapabilitiesResponse {
+  capabilities: RouterCapabilities;
+  steps: ProvisionStep[];
+}
+
+export interface RouterUpgradeRequest {
+  ssh_pass: string;
+  ssh_key?: string;
+  node_name?: string;
+  default_action?: string;
+  poll_interval_ms?: number;
+  firewall_backend?: string;
+}
+
+export interface RouterDowngradeRequest {
+  ssh_pass: string;
+  ssh_key?: string;
+  server_url?: string;
 }
 
 export interface SuggestServerURLResponse {
@@ -342,6 +397,10 @@ export const api = {
   getNodes: () => request<NodeRecord[]>("/nodes"),
   getNode: (addr: string) =>
     request<NodeRecord>(`/nodes/${encodeURIComponent(addr)}`),
+  deleteNode: (addr: string) =>
+    request<{ status: string }>(`/nodes/${encodeURIComponent(addr)}`, {
+      method: "DELETE",
+    }),
   updateNodeConfig: (addr: string, config: object) =>
     request(`/nodes/${encodeURIComponent(addr)}/config`, {
       method: "PUT",
@@ -668,6 +727,10 @@ export const api = {
       body: JSON.stringify(params),
     }),
   getRouters: () => request<RouterRecord[]>("/routers"),
+  deleteRouter: (addr: string) =>
+    request<{ status: string }>(`/routers/${encodeURIComponent(addr)}`, {
+      method: "DELETE",
+    }),
   disconnectRouter: (addr: string, sshPass: string) =>
     request<{ status: string; steps: ProvisionStep[] }>(
       `/routers/${encodeURIComponent(addr)}/disconnect`,
@@ -676,6 +739,27 @@ export const api = {
         body: JSON.stringify({ ssh_pass: sshPass }),
       },
     ),
+  getRouterCapabilities: (
+    addr: string,
+    payload: { ssh_pass: string; ssh_key?: string },
+  ) =>
+    request<RouterCapabilitiesResponse>(
+      `/routers/${encodeURIComponent(addr)}/capabilities`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+  upgradeRouter: (addr: string, payload: RouterUpgradeRequest) =>
+    request<ConnectRouterResponse>(`/routers/${encodeURIComponent(addr)}/upgrade`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  downgradeRouter: (addr: string, payload: RouterDowngradeRequest) =>
+    request<ConnectRouterResponse>(`/routers/${encodeURIComponent(addr)}/downgrade`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // Version & Updates
   getVersion: () => request<VersionInfo>("/version"),

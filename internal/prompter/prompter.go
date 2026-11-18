@@ -141,3 +141,9 @@ func (p *Prompter) GetPending() []*PendingPrompt {
 	}
 	return prompts
 }
+
+func (p *Prompter) GetPendingPrompt(id string) *PendingPrompt {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.pending[id]
+}

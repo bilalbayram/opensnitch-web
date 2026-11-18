@@ -2,15 +2,27 @@ package router
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"errors"
 	"fmt"
+	"net"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/bilalbayram/opensnitch-web/internal/db"
+	"golang.org/x/crypto/ssh"
 )
+
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "i/o timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return true }
 
 type fakeRemoteClient struct {
 	outputs map[string]fakeRunResult
@@ -25,8 +37,8 @@ type fakeRunResult struct {
 func newFakeRemoteClient() *fakeRemoteClient {
 	return &fakeRemoteClient{
 		outputs: map[string]fakeRunResult{
-			"cat /etc/openwrt_release 2>/dev/null":                                                {output: "DISTRIB_ID='OpenWrt'\n"},
-			"{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING":                   {output: "INSTALLED\n"},
+			"cat /etc/openwrt_release 2>/dev/null": {output: "DISTRIB_ID='OpenWrt'\n"},
+			"{ which conntrack && wget --version 2>&1 | grep -q GNU; } >/dev/null 2>&1 && echo INSTALLED || echo MISSING": {output: "INSTALLED\n"},
 			"mkdir -p /etc/conntrack-agent":                                                       {},
 			"chmod +x /etc/conntrack-agent/agent.sh /etc/init.d/conntrack-agent":                  {},
 			"/etc/init.d/conntrack-agent enable":                                                  {},
@@ -55,6 +67,11 @@ func (c *fakeRemoteClient) Run(cmd string) (string, error) {
 
 func (c *fakeRemoteClient) WriteFile(path, content string) error {
 	c.writes[path] = content
+	return nil
+}
+
+func (c *fakeRemoteClient) WriteBinary(path string, content []byte, mode os.FileMode) error {
+	c.writes[path] = fmt.Sprintf("binary:%d:%o", len(content), mode.Perm())
 	return nil
 }
 
@@ -264,4 +281,108 @@ func (c *fakeRemoteClientWithConnCheck) Run(cmd string) (string, error) {
 		return "", nil
 	}
 	return c.fakeRemoteClient.Run(cmd)
+}
+
+func TestSSHDialSupportsKeyboardInteractivePasswordAuth(t *testing.T) {
+	signer, err := testSigner()
+	if err != nil {
+		t.Fatalf("create host key: %v", err)
+	}
+
+	serverConfig := &ssh.ServerConfig{
+		KeyboardInteractiveCallback: func(conn ssh.ConnMetadata, challenge ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
+			answers, err := challenge(conn.User(), "keyboard-interactive", []string{"Password: "}, []bool{false})
+			if err != nil {
+				return nil, err
+			}
+			if len(answers) != 1 || answers[0] != "secret" {
+				return nil, errors.New("bad password")
+			}
+			return nil, nil
+		},
+	}
+	serverConfig.AddHostKey(signer)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer conn.Close()
+
+		_, chans, reqs, err := ssh.NewServerConn(conn, serverConfig)
+		if err != nil {
+			done <- err
+			return
+		}
+		go ssh.DiscardRequests(reqs)
+		for ch := range chans {
+			ch.Reject(ssh.UnknownChannelType, "unsupported")
+		}
+		done <- nil
+	}()
+
+	addr := listener.Addr().(*net.TCPAddr)
+	client, err := sshDial("127.0.0.1", addr.Port, "root", "secret", "")
+	if err != nil {
+		t.Fatalf("ssh dial: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("close client: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("server handshake: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for keyboard-interactive handshake")
+	}
+}
+
+func TestExplainSSHDialErrorPasswordOnlyAuth(t *testing.T) {
+	err := errors.New("ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password], no supported methods remain")
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if !strings.Contains(message, "SSH authentication failed for root@192.168.1.1:22") {
+		t.Fatalf("expected auth failure explanation, got %q", message)
+	}
+}
+
+func TestExplainSSHDialErrorOfflineTimeout(t *testing.T) {
+	err := &net.OpError{Op: "dial", Net: "tcp", Err: timeoutNetError{}}
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if message != "router is offline or unreachable at 192.168.1.1:22" {
+		t.Fatalf("unexpected message: %q", message)
+	}
+}
+
+func TestExplainSSHDialErrorConnectionRefused(t *testing.T) {
+	err := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+
+	message := explainSSHDialError("192.168.1.1", 22, "root", err)
+
+	if message != "router is reachable at 192.168.1.1:22, but SSH is not accepting connections on that port" {
+		t.Fatalf("unexpected message: %q", message)
+	}
+}
+
+func testSigner() (ssh.Signer, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	return ssh.NewSignerFromKey(privateKey)
 }

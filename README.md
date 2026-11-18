@@ -126,6 +126,22 @@ Replace `192.168.1.0/24` with your router subnet and `8080` with your configured
 
 The provisioner performs a connectivity check after deployment and will show a warning in the UI if the router cannot reach the server.
 
+## Managed router daemon v1
+
+OpenWrt routers can also be upgraded from the legacy HTTP ingest agent to the managed `opensnitchd-router` runtime. v1 is intentionally limited:
+
+- Router-local processes use the normal gRPC `AskRule` prompt flow.
+- Forwarded LAN traffic is observed continuously and can be enforced with explicit rules, but unknown forwarded flows are allowed by default.
+- Forwarded traffic never opens live prompts in v1. Use generated or manually created device-scoped rules instead.
+- Only `aarch64` OpenWrt targets are supported in v1.
+
+The managed runtime connects to gRPC with the existing router API key in the `x-router-api-key` metadata header. If the server cannot infer a LAN-reachable gRPC endpoint automatically, set `server.grpc_public_addr` before upgrading routers.
+
+```bash
+# Build the OpenWrt router daemon artifact
+make daemon-router-arm64
+```
+
 ## Development
 
 Built with Go 1.22 (Chi, gRPC, SQLite) and React 19 (Vite, TypeScript, Tailwind CSS 4).

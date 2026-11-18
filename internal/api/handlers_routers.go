@@ -15,6 +15,26 @@ import (
 	"github.com/bilalbayram/opensnitch-web/internal/ws"
 )
 
+type routerSSHRequest struct {
+	SSHPass string `json:"ssh_pass"`
+	SSHKey  string `json:"ssh_key"`
+}
+
+type routerUpgradeRequest struct {
+	SSHPass         string `json:"ssh_pass"`
+	SSHKey          string `json:"ssh_key"`
+	NodeName        string `json:"node_name"`
+	DefaultAction   string `json:"default_action"`
+	PollIntervalMS  int    `json:"poll_interval_ms"`
+	FirewallBackend string `json:"firewall_backend"`
+}
+
+type routerDowngradeRequest struct {
+	SSHPass   string `json:"ssh_pass"`
+	SSHKey    string `json:"ssh_key"`
+	ServerURL string `json:"server_url"`
+}
+
 func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 	var req router.ConnectRequest
 	if err := readJSON(r, &req); err != nil {
@@ -36,6 +56,13 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 	if req.Name == "" {
 		req.Name = req.Addr
 	}
+
+	connectMode := router.NormalizeConnectMode(req.Mode)
+	if connectMode == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be monitor or manage"})
+		return
+	}
+	req.Mode = connectMode
 
 	// Resolve server URL: user override > LAN auto-detect > Host header fallback
 	var serverURLSource string
@@ -74,15 +101,41 @@ func (a *API) handleConnectRouter(w http.ResponseWriter, r *http.Request) {
 	result.ServerURL = req.ServerURL
 	result.ServerURLSource = serverURLSource
 
-	// Register as a node (UpsertRouterNode preserves existing cons counter)
-	a.db.UpsertRouterNode(result.Router.Addr, result.Router.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
+	if connectMode == router.ConnectModeManage {
+		daemonResult, daemonErr := a.routerProv.ProvisionDaemon(r.Context(), router.DaemonRequest{
+			Addr:     req.Addr,
+			SSHPort:  req.SSHPort,
+			SSHUser:  req.SSHUser,
+			SSHPass:  req.SSHPass,
+			SSHKey:   req.SSHKey,
+			NodeName: req.Name,
+		})
+		if daemonResult != nil {
+			result.Steps = append(result.Steps, daemonResult.Steps...)
+			if daemonResult.Router != nil {
+				result.Router = daemonResult.Router
+			}
+			if daemonResult.Capabilities != nil {
+				result.Capabilities = daemonResult.Capabilities
+			}
+		}
+		if daemonErr != nil {
+			result.Warning = fmt.Sprintf("Router connected in monitor mode. Manage setup failed: %v", daemonErr)
+		}
+	}
 
-	a.hub.BroadcastEvent(ws.EventNodeConnected, map[string]any{
-		"addr":        result.Router.Addr,
-		"hostname":    result.Router.Name,
-		"version":     "conntrack-agent",
-		"source_type": "router",
-	})
+	legacyConnected := result.Router != nil && result.Router.DaemonMode != db.RouterDaemonModeRouterDaemon
+	if legacyConnected {
+		// Register as a node (UpsertRouterNode preserves existing cons counter)
+		a.db.UpsertRouterNode(result.Router.Addr, result.Router.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
+
+		a.hub.BroadcastEvent(ws.EventNodeConnected, map[string]any{
+			"addr":        result.Router.Addr,
+			"hostname":    result.Router.Name,
+			"version":     "conntrack-agent",
+			"source_type": "router",
+		})
+	}
 
 	writeJSON(w, http.StatusOK, result)
 }
@@ -98,19 +151,46 @@ func (a *API) handleGetRouters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Enrich with node online status
+	type linkedNodeSummary struct {
+		Addr           string `json:"addr"`
+		Online         bool   `json:"online"`
+		Mode           string `json:"mode"`
+		DaemonVersion  string `json:"daemon_version"`
+		DaemonRules    int64  `json:"daemon_rules"`
+		Cons           int64  `json:"cons"`
+		ConsDropped    int64  `json:"cons_dropped"`
+		LastConnection string `json:"last_connection"`
+	}
 	type enrichedRouter struct {
 		db.Router
-		Online bool `json:"online"`
+		Online     bool               `json:"online"`
+		LinkedNode *linkedNodeSummary `json:"linked_node"`
 	}
 
 	result := make([]enrichedRouter, len(routers))
 	for i, rt := range routers {
-		node, err := a.db.GetNode(rt.Addr)
+		nodeAddr := rt.Addr
+		if rt.DaemonMode == db.RouterDaemonModeRouterDaemon && strings.TrimSpace(rt.LinkedNodeAddr) != "" {
+			nodeAddr = rt.LinkedNodeAddr
+		}
+
+		node, err := a.db.GetNode(nodeAddr)
 		online := false
+		var linkedNode *linkedNodeSummary
 		if err == nil && node != nil {
 			online = routerOnlineFromLastConn(node.LastConn)
+			linkedNode = &linkedNodeSummary{
+				Addr:           nodeAddr,
+				Online:         online,
+				Mode:           node.Mode,
+				DaemonVersion:  node.DaemonVersion,
+				DaemonRules:    node.DaemonRules,
+				Cons:           node.Cons,
+				ConsDropped:    node.ConsDropped,
+				LastConnection: node.LastConn,
+			}
 		}
-		result[i] = enrichedRouter{Router: rt, Online: online}
+		result[i] = enrichedRouter{Router: rt, Online: online, LinkedNode: linkedNode}
 	}
 
 	writeJSON(w, http.StatusOK, result)
@@ -195,6 +275,48 @@ func (a *API) handleDisconnectRouter(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) handleDeleteRouter(w http.ResponseWriter, r *http.Request) {
+	addr := routerAddrParam(r)
+
+	rt, err := a.db.GetRouterByAddr(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "router not found"})
+		return
+	}
+
+	nodeAddrs := []string{rt.Addr}
+	if strings.TrimSpace(rt.LinkedNodeAddr) != "" && rt.LinkedNodeAddr != rt.Addr {
+		nodeAddrs = append(nodeAddrs, rt.LinkedNodeAddr)
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		node, err := a.db.GetNode(nodeAddr)
+		if err != nil {
+			continue
+		}
+		if routerOnlineFromLastConn(node.LastConn) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "disconnect the router before deleting it"})
+			return
+		}
+	}
+
+	if err := a.db.DeleteRouter(rt.Addr); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	for _, nodeAddr := range nodeAddrs {
+		if _, err := a.db.GetNode(nodeAddr); err == nil {
+			if err := a.db.DeleteNode(nodeAddr); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (a *API) handleSuggestServerURL(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RouterIP string `json:"router_ip"`
@@ -214,4 +336,166 @@ func (a *API) handleSuggestServerURL(w http.ResponseWriter, r *http.Request) {
 		resp["warning"] = "Server and router do not appear to share a subnet. The router may not be able to reach the server. You can enter a server URL manually."
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (a *API) handleRouterCapabilities(w http.ResponseWriter, r *http.Request) {
+	addr := routerAddrParam(r)
+
+	var req routerSSHRequest
+	if err := readJSON(r, &req); err != nil || (req.SSHPass == "" && req.SSHKey == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ssh_pass or ssh_key is required"})
+		return
+	}
+
+	rt, err := a.db.GetRouterByAddr(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "router not found"})
+		return
+	}
+
+	result, err := a.routerProv.CheckCapabilities(r.Context(), rt.Addr, rt.SSHPort, rt.SSHUser, req.SSHPass, req.SSHKey)
+	if err != nil {
+		var capabilities any
+		var steps any
+		if result != nil {
+			capabilities = result.Capabilities
+			steps = result.Steps
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":        err.Error(),
+			"capabilities": capabilities,
+			"steps":        steps,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) handleUpgradeRouter(w http.ResponseWriter, r *http.Request) {
+	addr := routerAddrParam(r)
+
+	var req routerUpgradeRequest
+	if err := readJSON(r, &req); err != nil || (req.SSHPass == "" && req.SSHKey == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ssh_pass or ssh_key is required"})
+		return
+	}
+
+	rt, err := a.db.GetRouterByAddr(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "router not found"})
+		return
+	}
+	if rt.DaemonMode == db.RouterDaemonModeRouterDaemon {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "router is already running router-daemon"})
+		return
+	}
+
+	result, err := a.routerProv.ProvisionDaemon(r.Context(), router.DaemonRequest{
+		Addr:            rt.Addr,
+		SSHPort:         rt.SSHPort,
+		SSHUser:         rt.SSHUser,
+		SSHPass:         req.SSHPass,
+		SSHKey:          req.SSHKey,
+		NodeName:        req.NodeName,
+		DefaultAction:   req.DefaultAction,
+		PollIntervalMS:  req.PollIntervalMS,
+		FirewallBackend: req.FirewallBackend,
+	})
+	if err != nil {
+		var capabilities any
+		var steps any
+		if result != nil {
+			capabilities = result.Capabilities
+			steps = result.Steps
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":        err.Error(),
+			"capabilities": capabilities,
+			"steps":        steps,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *API) handleDowngradeRouter(w http.ResponseWriter, r *http.Request) {
+	addr := routerAddrParam(r)
+
+	var req routerDowngradeRequest
+	if err := readJSON(r, &req); err != nil || (req.SSHPass == "" && req.SSHKey == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ssh_pass or ssh_key is required"})
+		return
+	}
+
+	rt, err := a.db.GetRouterByAddr(addr)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "router not found"})
+		return
+	}
+	if rt.DaemonMode != db.RouterDaemonModeRouterDaemon {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "router is not running router-daemon"})
+		return
+	}
+
+	deprovisionSteps, err := a.routerProv.DeprovisionDaemon(r.Context(), rt.Addr, rt.SSHPort, rt.SSHUser, req.SSHPass, req.SSHKey)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(),
+			"steps": deprovisionSteps,
+		})
+		return
+	}
+
+	serverURL := strings.TrimSpace(req.ServerURL)
+	if serverURL == "" {
+		if lanURL, _ := router.ResolveServerURL(rt.Addr, a.cfg.Server.HTTPAddr); lanURL != "" {
+			serverURL = lanURL
+		} else {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			serverURL = fmt.Sprintf("%s://%s", scheme, r.Host)
+		}
+	}
+
+	result, provisionErr := a.routerProv.Provision(r.Context(), router.ConnectRequest{
+		Addr:      rt.Addr,
+		SSHPort:   rt.SSHPort,
+		SSHUser:   rt.SSHUser,
+		SSHPass:   req.SSHPass,
+		SSHKey:    req.SSHKey,
+		Name:      rt.Name,
+		LANSubnet: rt.LANSubnet,
+		ServerURL: serverURL,
+	})
+	if provisionErr != nil {
+		steps := append([]router.ProvisionStep{}, deprovisionSteps...)
+		if result != nil {
+			steps = append(steps, result.Steps...)
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": provisionErr.Error(),
+			"steps": steps,
+		})
+		return
+	}
+
+	if err := a.db.UpdateRouterRuntime(rt.Addr, db.RouterDaemonModeConntrackAgent, ""); err != nil {
+		log.Printf("[router] Failed to update router runtime for %s: %v", rt.Addr, err)
+	}
+	_ = a.db.UpsertRouterNode(rt.Addr, rt.Name, "conntrack-agent", db.NodeStatusOnline, time.Now().Format("2006-01-02 15:04:05"))
+
+	result.Steps = append(deprovisionSteps, result.Steps...)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func routerAddrParam(r *http.Request) string {
+	addr := chi.URLParam(r, "addr")
+	if decoded, err := url.QueryUnescape(addr); err == nil {
+		return decoded
+	}
+	return addr
 }
